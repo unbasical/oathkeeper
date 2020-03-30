@@ -41,7 +41,7 @@ func (a *AuthorizerAllow) GetID() string {
 	return "allow"
 }
 
-func (a *AuthorizerAllow) Authorize(r *http.Request, session *authn.AuthenticationSession, config json.RawMessage, _ pipeline.Rule) error {
+func (a *AuthorizerAllow) Authorize(_ *http.Request, session *authn.AuthenticationSession, config json.RawMessage, _ pipeline.Rule) error {
 	return nil
 }
 

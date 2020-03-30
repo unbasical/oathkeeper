@@ -10,25 +10,46 @@ services:
       - "4456:4456"
     command:
       serve --config=/etc/config/oathkeeper/config.yaml
-    environment:
-      - TRACING_PROVIDER=jaeger
-      - TRACING_PROVIDER_JAEGER_SAMPLING_SERVER_URL=http://jaeger:5778/sampling
-      - TRACING_PROVIDER_JAEGER_LOCAL_AGENT_ADDRESS=jaeger:6831
-      - TRACING_PROVIDER_JAEGER_SAMPLING_TYPE=const
-      - TRACING_PROVIDER_JAEGER_SAMPLING_VALUE=1
     volumes:
       - type: bind
         source: ./.docker_compose
         target: /etc/config/oathkeeper
     restart: on-failure
-  jaeger:
-    image: jaegertracing/all-in-one
+
+  kelon:
+    image: kelonio/kelon:latest
+    restart: always
+    depends_on:
+      - postgres
     ports:
-      - "16686:16686" # The UI port
-#      These are ports for collecting, sampling, agents, ...
-#      - "5775:5775/udp"
-#      - "6831:6831/udp"
-#      - "6832:6832/udp"
-#      - "5778:5778"
-#      - "14268:14268"
-#      - "9411:9411"
+      - "8181:8181"
+    volumes:
+      - ./kelon/:/conf
+      - ./kelon/postgres-call-operands.yml:/call-operands/postgres.yml
+    environment:
+      - DATASTORE_CONF=/conf/datastore.yml
+      - API_CONF=/conf/api.yml
+      - OPA_CONF=/conf/opa.yml
+      - REGO_DIR=/conf
+      - CONFIG_WATCHER_PATH=/conf
+      - TELEMETRY_SERVICE=applicationinsights
+      - INSTRUMENTATION_KEY=ae6aa5ed-b2d4-4368-a5d2-5dc28c9a696d
+      - APPLICATION_INSIGHTS_SERVICE_NAME=Kelon
+
+  postgres:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: 'appstore'
+      POSTGRES_USER: 'admin'
+      POSTGRES_PASSWORD: 'SuperSecure'
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./init-postgres-schemas.sql:/docker-entrypoint-initdb.d/Init-Postgres.sql
+
+  appstore:
+    image: kelonio/spring-vue-appstore-backend:latest
+    ports:
+      - "8080:8080"

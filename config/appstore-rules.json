@@ -1,0 +1,33 @@
+[
+    {
+        "id": "allow-anonymous-with-json-authz",
+        "upstream": {
+            "url": "http://localhost:8080/"
+        },
+        "match": {
+            "url": "http://<127.0.0.1|localhost>:4455/<.*>",
+            "methods": [
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE"
+            ]
+        },
+        "authenticators": [
+            {
+                "handler": "anonymous"
+            }
+        ],
+        "authorizer": {
+            "handler": "opa",
+            "config": {
+                "remote": "http://localhost:8181/v1/data"
+            }
+        },
+        "mutators": [
+            {
+                "handler": "noop"
+            }
+        ]
+    }
+]
