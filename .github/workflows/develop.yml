@@ -31,11 +31,18 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v1
 
+      - name: install packr2
+        run: packr2 || (GO111MODULE=on go install github.com/gobuffalo/packr/v2/packr2 && packr2)
+      - name: go build
+        run: CGO_ENABLED=0 GO111MODULE=on GOOS=linux GOARCH=amd64 go build
+      - name: packr2 clean
+        run: packr2 clean
+
       - name: Login to DockerHub
         run: docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build container image
-        run: docker build -t kelonio/oathkeeper:$(git rev-parse --short HEAD) -t kelonio/oathkeeper:latest .
+        run: docker build -f Dockerfile-alpine -t kelonio/oathkeeper:$(git rev-parse --short HEAD) -t kelonio/oathkeeper:latest .
 
       - name: Push images to DockerHub
         run: echo kelonio/oathkeeper:$(git rev-parse --short HEAD) kelonio/oathkeeper:latest | xargs -n 1 docker push
