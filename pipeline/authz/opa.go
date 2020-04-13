@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"text/template"
 
 	"github.com/ory/x/httpx"
@@ -62,7 +63,7 @@ func (a *AuthorizerOPA) Authorize(r *http.Request, session *authn.Authentication
 		"input": map[string]interface{}{
 			"path":   r.URL.Path,
 			"method": r.Method,
-			"token":  r.Header.Get("authorization"),
+			"token":  strings.ReplaceAll(r.Header.Get("authorization"), "Bearer ", ""),
 		},
 	}
 
