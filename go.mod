@@ -31,6 +31,7 @@ require (
 	github.com/julienschmidt/httprouter v1.2.0
 	github.com/lib/pq v1.3.0
 	github.com/mattn/goveralls v0.0.5
+	github.com/mitchellh/copystructure v1.0.0
 	github.com/ory/analytics-go/v4 v4.0.1
 	github.com/ory/fosite v0.29.2
 	github.com/ory/go-acc v0.2.1
@@ -40,12 +41,13 @@ require (
 	github.com/ory/herodot v0.7.0
 	github.com/ory/jsonschema/v3 v3.0.1
 	github.com/ory/ladon v1.1.0
-	github.com/ory/sdk/swagutil v0.0.0-20200202121523-307941feee4b
+	github.com/ory/sdk/swagutil v0.0.0-20200505101021-3f40b808145c
 	github.com/ory/viper v1.7.4
 	github.com/ory/x v0.0.111
 	github.com/pborman/uuid v1.2.0
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
 	github.com/pkg/errors v0.9.1
+	github.com/prometheus/client_golang v1.5.0
 	github.com/rs/cors v1.6.0
 	github.com/sirupsen/logrus v1.5.0
 	github.com/spf13/cobra v0.0.7

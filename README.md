@@ -1,11 +1,11 @@
-<h1 align="center"><img src="./docs/images/banner_oathkeeper.png" alt="ORY Oathkeeper - Cloud Native Identity & Access Proxy"></h1>
+<h1 align="center"><img src=".github/banner_oathkeeper.png" alt="ORY Oathkeeper - Cloud Native Identity & Access Proxy"></h1>
 
 <h4 align="center">
     <a href="https://www.ory.sh/chat">Chat</a> |
     <a href="https://community.ory.sh/">Forums</a> |
     <a href="http://eepurl.com/di390P">Newsletter</a><br/><br/>
-    <a href="https://www.ory.sh/docs/oathkeeper/sdk/api">API Docs</a> |
-    <a href="https://www.ory.sh/docs/oathkeeper/">Guide</a> |
+    <a href="https://www.ory.sh/oathkeeper/docs/reference/api">API Docs</a> |
+    <a href="https://www.ory.sh/oathkeeper/docs/">Guide</a> |
     <a href="https://godoc.org/github.com/ory/oathkeeper">Code Docs</a><br/><br/>
     <a href="https://opencollective.com/ory">Support this project!</a>
 </h4>
@@ -70,7 +70,7 @@ documentation and upgrade instructions.
 ## Installation
 
 Head over to the
-[ORY Developer Documentation](https://www.ory.sh/docs/oathkeeper/install) to
+[ORY Developer Documentation](https://www.ory.sh/oathkeeper/docs/install) to
 learn how to install ORY Oathkeeper on Linux, macOS, Windows, and Docker and how
 to build ORY Oathkeeper from source.
 
@@ -107,61 +107,61 @@ that your company deserves a spot here, reach out to
         <tr>
             <td>Sponsor</td>
             <td>Raspberry PI Foundation</td>
-            <td align="center"><img height="32px" src="./docs/adopters/raspi.svg" alt="Raspberry PI Foundation"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/raspi.svg" alt="Raspberry PI Foundation"></td>
             <td><a href="https://www.raspberrypi.org/">raspberrypi.org</a></td>
         </tr>
         <tr>
             <td>Contributor</td>
             <td>Kyma Project</a>
-            <td align="center"><img height="32px" src="./docs/adopters/kyma.svg" alt="Kyma Project"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/kyma.svg" alt="Kyma Project"></td>
             <td><a href="https://kyma-project.io">kyma-project.io</a></td>
         </tr>
         <tr>
             <td>Sponsor</td>
             <td>ThoughtWorks</td>
-            <td align="center"><img height="32px" src="./docs/adopters/tw.svg" alt="ThoughtWorks"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/tw.svg" alt="ThoughtWorks"></td>
             <td><a href="https://www.thoughtworks.com/">thoughtworks.com</a></td>
         </tr>
         <tr>
             <td>Sponsor</td>
             <td>Tulip</td>
-            <td align="center"><img height="32px" src="./docs/adopters/tulip.svg" alt="Tulip Retail"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/tulip.svg" alt="Tulip Retail"></td>
             <td><a href="https://tulip.com/">tulip.com</a></td>
         </tr>
         <tr>
             <td>Sponsor</td>
             <td>Cashdeck / All My Funds</td>
-            <td align="center"><img height="32px" src="./docs/adopters/allmyfunds.svg" alt="All My Funds"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/allmyfunds.svg" alt="All My Funds"></td>
             <td><a href="https://cashdeck.com.au/">cashdeck.com.au</a></td>
         </tr>
         <tr>
             <td>Sponsor</td>
             <td>3Rein</td>
-            <td align="center"><img height="32px" src="./docs/adopters/3R-horiz.svg" alt="3Rein"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/3R-horiz.svg" alt="3Rein"></td>
             <td><a href="https://3rein.com/">3rein.com</a></td>
         </tr>
         <tr>
             <td>Contributor</td>
             <td>Hootsuite</td>
-            <td align="center"><img height="32px" src="./docs/adopters/hootsuite.svg" alt="Hootsuite"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/hootsuite.svg" alt="Hootsuite"></td>
             <td><a href="https://hootsuite.com/">hootsuite.com</a></td>
         </tr>
         <tr>
             <td>Adopter *</td>
             <td>Segment</td>
-            <td align="center"><img height="32px" src="./docs/adopters/segment.svg" alt="Segment"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/segment.svg" alt="Segment"></td>
             <td><a href="https://segment.com/">segment.com</a></td>
         </tr>
         <tr>
             <td>Adopter *</td>
             <td>Arduino</td>
-            <td align="center"><img height="32px" src="./docs/adopters/arduino.svg" alt="Arduino"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/arduino.svg" alt="Arduino"></td>
             <td><a href="https://www.arduino.cc/">arduino.cc</a></td>
         </tr>
         <tr>
             <td>Sponsor</td>
             <td>OrderMyGear</td>
-            <td align="center"><img height="32px" src="./docs/adopters/ordermygear.svg" alt="OrderMyGear"></td>
+            <td align="center"><img height="32px" src="./.github/adopters/ordermygear.svg" alt="OrderMyGear"></td>
             <td><a href="https://www.ordermygear.com/">ordermygear.com</a></td>
         </tr>
     </tdbody>
@@ -187,19 +187,30 @@ TheCrealm.
 
 
 
+
+
+
+
+
+
+
 ## Ecosystem
 
 <!--BEGIN ECOSYSTEM-->
-We build Ory on several guiding principles when it comes to our architecture design:
+
+We build Ory on several guiding principles when it comes to our architecture
+design:
 
 - Minimal dependencies
 - Runs everywhere
 - Scales without effort
 - Minimize room for human and network errors
 
-ORY's architecture designed to run best on a Container Orchestration Systems such as Kubernetes, CloudFoundry, OpenShift, and similar projects.
-Binaries are small (5-15MB) and available for all popular processor types (ARM, AMD64, i386) and operating
-systems (FreeBSD, Linux, macOS, Windows) without system dependencies (Java, Node, Ruby, libxml, ...).
+ORY's architecture designed to run best on a Container Orchestration Systems
+such as Kubernetes, CloudFoundry, OpenShift, and similar projects. Binaries are
+small (5-15MB) and available for all popular processor types (ARM, AMD64, i386)
+and operating systems (FreeBSD, Linux, macOS, Windows) without system
+dependencies (Java, Node, Ruby, libxml, ...).
 
 ### ORY Kratos: Identity and User Infrastructure and Management
 
@@ -212,18 +223,18 @@ deal with: Self-service Login and Registration, Multi-Factor Authentication
 
 ### ORY Hydra: OAuth2 & OpenID Connect Server
 
-[ORY Hydra](https://github.com/ory/hydra) is an OpenID Certified™ OAuth2 and OpenID Connect
-Provider can connect to any existing identity database (LDAP, AD, KeyCloak, PHP+MySQL, ...)
-and user interface.
+[ORY Hydra](https://github.com/ory/hydra) is an OpenID Certified™ OAuth2 and
+OpenID Connect Provider can connect to any existing identity database (LDAP, AD,
+KeyCloak, PHP+MySQL, ...) and user interface.
 
 ### ORY Oathkeeper: Identity & Access Proxy
 
 [ORY Oathkeeper](https://github.com/ory/oathkeeper) is a BeyondCorp/Zero Trust
 Identity & Access Proxy (IAP) with configurable authentication, authorization,
-and request mutation rules for your web services: Authenticate JWT, Access Tokens,
-API Keys, mTLS; Check if the contained subject is allowed to perform the request;
-Encode resulting content into custom headers (`X-User-ID`), JSON Web Tokens
-and more!
+and request mutation rules for your web services: Authenticate JWT, Access
+Tokens, API Keys, mTLS; Check if the contained subject is allowed to perform the
+request; Encode resulting content into custom headers (`X-User-ID`), JSON Web
+Tokens and more!
 
 ### ORY Keto: Access Control Policies as a Server
 
@@ -231,7 +242,15 @@ and more!
 set of access control policies, similar to AWS IAM Policies, in order to
 determine whether a subject (user, application, service, car, ...) is authorized
 to perform a certain action on a resource.
+
 <!--END ECOSYSTEM-->
+
+
+
+
+
+
+
 
 
 
@@ -254,12 +273,12 @@ more.
 ### Guide
 
 The Guide is available
-[here](https://www.ory.sh/docs/oathkeeper/).
+[here](https://www.ory.sh/oathkeeper/docs/).
 
 ### HTTP API documentation
 
 The HTTP API is documented
-[here](https://www.ory.sh/docs/oathkeeper/sdk/api).
+[here](https://www.ory.sh/oathkeeper/docs/reference/api).
 
 ### Upgrading and Changelog
 

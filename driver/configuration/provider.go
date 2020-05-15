@@ -14,7 +14,7 @@ import (
 	"github.com/rs/cors"
 )
 
-var schemas = packr.New("schemas", "../../.schemas")
+var schemas = packr.New("schemas", "../../.schema")
 
 const (
 	ForbiddenStrategyErrorType = "forbidden"
@@ -48,6 +48,9 @@ type Provider interface {
 
 	ProxyServeAddress() string
 	APIServeAddress() string
+	PrometheusServeAddress() string
+
+	PrometheusMetricsPath() string
 
 	ToScopeStrategy(value string, key string) fosite.ScopeStrategy
 	ParseURLs(sources []string) ([]url.URL, error)
