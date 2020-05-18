@@ -1528,6 +1528,35 @@
               }
             }
           ]
+        },
+        "opa": {
+          "title": "Open Policy Agent",
+          "description": "The `OPA` authorizer based on [remote_json](https://www.ory.sh/docs/oathkeeper/pipeline/authz#remote_json).",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "$ref": "#/definitions/handlerSwitch"
+            }
+          },
+          "oneOf": [
+            {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              },
+              "required": [
+                "config"
+              ]
+            },
+            {
+              "properties": {
+                "enabled": {
+                  "const": false
+                }
+              }
+            }
+          ]
         }
       }
     },
