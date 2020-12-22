@@ -41,7 +41,7 @@ type AuthorizerOPA struct {
 func NewAuthorizerOPA(c configuration.Provider) *AuthorizerOPA {
 	return &AuthorizerOPA{
 		c:      c,
-		client: httpx.NewResilientClientLatencyToleranceSmall(nil),
+		client: httpx.NewResilientClientLatencyToleranceHigh(nil),
 		t:      x.NewTemplate("opa"),
 	}
 }
