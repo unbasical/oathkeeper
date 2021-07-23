@@ -22,6 +22,7 @@ package rule
 
 import (
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -84,7 +85,7 @@ func TestRule(t *testing.T) {
 		},
 	}
 	for ind, tcase := range tests {
-		t.Run(string(ind), func(t *testing.T) {
+		t.Run(strconv.FormatInt(int64(ind), 10), func(t *testing.T) {
 			testFunc := func(rule Rule, strategy configuration.MatchingStrategy) {
 				matched, err := rule.IsMatching(strategy, tcase.method, mustParse(t, tcase.url))
 				assert.Equal(t, tcase.expectedMatch, matched)
@@ -137,7 +138,49 @@ func TestRule1(t *testing.T) {
 		},
 	}
 	for ind, tcase := range tests {
-		t.Run(string(ind), func(t *testing.T) {
+		t.Run(strconv.FormatInt(int64(ind), 10), func(t *testing.T) {
+			matched, err := r.IsMatching(configuration.Regexp, tcase.method, mustParse(t, tcase.url))
+			assert.Equal(t, tcase.expectedMatch, matched)
+			assert.Equal(t, tcase.expectedErr, err)
+		})
+	}
+}
+
+func TestRuleWithCustomMethod(t *testing.T) {
+	r := &Rule{
+		Match: &Match{
+			Methods: []string{"CUSTOM"},
+			URL:     "https://localhost/users/<(?!admin).*>",
+		},
+	}
+
+	var tests = []struct {
+		method        string
+		url           string
+		expectedMatch bool
+		expectedErr   error
+	}{
+		{
+			method:        "CUSTOM",
+			url:           "https://localhost/users/manager",
+			expectedMatch: true,
+			expectedErr:   nil,
+		},
+		{
+			method:        "CUSTOM",
+			url:           "https://localhost/users/1234?key=value&key1=value1",
+			expectedMatch: true,
+			expectedErr:   nil,
+		},
+		{
+			method:        "DELETE",
+			url:           "https://localhost/users/admin",
+			expectedMatch: false,
+			expectedErr:   nil,
+		},
+	}
+	for ind, tcase := range tests {
+		t.Run(strconv.FormatInt(int64(ind), 10), func(t *testing.T) {
 			matched, err := r.IsMatching(configuration.Regexp, tcase.method, mustParse(t, tcase.url))
 			assert.Equal(t, tcase.expectedMatch, matched)
 			assert.Equal(t, tcase.expectedErr, err)

@@ -25,8 +25,9 @@ import (
 	"os"
 
 	"github.com/gobuffalo/packr/v2"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	"github.com/ory/x/logrusx"
 
 	_ "github.com/ory/jsonschema/v3/fileloader"
 	_ "github.com/ory/jsonschema/v3/httploader"
@@ -34,7 +35,7 @@ import (
 	"github.com/ory/x/viperx"
 )
 
-var logger logrus.FieldLogger
+var logger *logrusx.Logger
 
 var schemas = packr.New("schemas", "../.schema")
 
@@ -58,7 +59,7 @@ func watchAndValidateViper() {
 	if err != nil {
 		logger.WithError(err).Fatal("Unable to open configuration JSON Schema.")
 	}
-	viperx.WatchAndValidateViper(logger, schema, "ORY Oathkeeper", []string{"serve", "profiling", "log"})
+	viperx.WatchAndValidateViper(logger, schema, "ORY Oathkeeper", []string{"serve", "profiling", "log"}, "")
 }
 
 func init() {

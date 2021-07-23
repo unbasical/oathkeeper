@@ -21,8 +21,9 @@ import (
 
 // AuthorizerRemoteJSONConfiguration represents a configuration for the remote_json authorizer.
 type AuthorizerRemoteJSONConfiguration struct {
-	Remote  string `json:"remote"`
-	Payload string `json:"payload"`
+	Remote                           string   `json:"remote"`
+	Payload                          string   `json:"payload"`
+	ForwardResponseHeadersToUpstream []string `json:"forward_response_headers_to_upstream"`
 }
 
 // PayloadTemplateID returns a string with which to associate the payload template.
@@ -53,7 +54,7 @@ func (a *AuthorizerRemoteJSON) GetID() string {
 }
 
 // Authorize implements the Authorizer interface.
-func (a *AuthorizerRemoteJSON) Authorize(_ *http.Request, session *authn.AuthenticationSession, config json.RawMessage, _ pipeline.Rule) error {
+func (a *AuthorizerRemoteJSON) Authorize(r *http.Request, session *authn.AuthenticationSession, config json.RawMessage, _ pipeline.Rule) error {
 	c, err := a.Config(config)
 	if err != nil {
 		return err
@@ -84,8 +85,12 @@ func (a *AuthorizerRemoteJSON) Authorize(_ *http.Request, session *authn.Authent
 		return errors.WithStack(err)
 	}
 	req.Header.Add("Content-Type", "application/json")
+	authz := r.Header.Get("Authorization")
+	if authz != "" {
+		req.Header.Add("Authorization", authz)
+	}
 
-	res, err := a.client.Do(req)
+	res, err := a.client.Do(req.WithContext(r.Context()))
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -95,6 +100,10 @@ func (a *AuthorizerRemoteJSON) Authorize(_ *http.Request, session *authn.Authent
 		return errors.WithStack(helper.ErrForbidden)
 	} else if res.StatusCode != http.StatusOK {
 		return errors.Errorf("expected status code %d but got %d", http.StatusOK, res.StatusCode)
+	}
+
+	for _, allowedHeader := range c.ForwardResponseHeadersToUpstream {
+		session.SetHeader(allowedHeader, res.Header.Get(allowedHeader))
 	}
 
 	return nil

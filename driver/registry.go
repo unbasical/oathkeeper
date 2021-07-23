@@ -1,8 +1,12 @@
 package driver
 
 import (
-	"github.com/sirupsen/logrus"
+	"github.com/ory/x/logrusx"
 
+	"github.com/ory/x/healthx"
+	"github.com/ory/x/tracing"
+
+	"github.com/ory/oathkeeper/driver/health"
 	"github.com/ory/oathkeeper/pipeline/errors"
 	"github.com/ory/oathkeeper/proxy"
 
@@ -14,21 +18,20 @@ import (
 	"github.com/ory/oathkeeper/pipeline/mutate"
 	"github.com/ory/oathkeeper/rule"
 	"github.com/ory/oathkeeper/x"
-	"github.com/ory/x/healthx"
-	"github.com/ory/x/tracing"
 )
 
 type Registry interface {
 	Init()
 
 	WithConfig(c configuration.Provider) Registry
-	WithLogger(l logrus.FieldLogger) Registry
+	WithLogger(l *logrusx.Logger) Registry
 	WithBuildInfo(version, hash, date string) Registry
 	BuildVersion() string
 	BuildDate() string
 	BuildHash() string
 
 	ProxyRequestHandler() *proxy.RequestHandler
+	HealthEventManager() health.EventManager
 	HealthHandler() *healthx.Handler
 	RuleHandler() *api.RuleHandler
 	DecisionHandler() *api.DecisionHandler

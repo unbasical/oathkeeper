@@ -7,10 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/sjson"
+
+	"github.com/ory/x/logrusx"
 
 	"github.com/ory/viper"
 
@@ -22,11 +23,12 @@ import (
 
 func TestAuthorizerRemoteJSONAuthorize(t *testing.T) {
 	tests := []struct {
-		name    string
-		setup   func(t *testing.T) *httptest.Server
-		session *authn.AuthenticationSession
-		config  json.RawMessage
-		wantErr bool
+		name               string
+		setup              func(t *testing.T) *httptest.Server
+		session            *authn.AuthenticationSession
+		sessionHeaderMatch *http.Header
+		config             json.RawMessage
+		wantErr            bool
 	}{
 		{
 			name:    "invalid configuration",
@@ -86,6 +88,8 @@ func TestAuthorizerRemoteJSONAuthorize(t *testing.T) {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					assert.Contains(t, r.Header, "Content-Type")
 					assert.Contains(t, r.Header["Content-Type"], "application/json")
+					assert.Contains(t, r.Header, "Authorization")
+					assert.Contains(t, r.Header["Authorization"], "Bearer token")
 					body, err := ioutil.ReadAll(r.Body)
 					require.NoError(t, err)
 					assert.Equal(t, string(body), "{}")
@@ -94,6 +98,30 @@ func TestAuthorizerRemoteJSONAuthorize(t *testing.T) {
 			},
 			session: &authn.AuthenticationSession{},
 			config:  json.RawMessage(`{"payload":"{}"}`),
+		},
+		{
+			name: "ok with allowed headers",
+			setup: func(t *testing.T) *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("X-Foo", "bar")
+					w.WriteHeader(http.StatusOK)
+				}))
+			},
+			session:            new(authn.AuthenticationSession),
+			sessionHeaderMatch: &http.Header{"X-Foo": []string{"bar"}},
+			config:             json.RawMessage(`{"payload":"{}","forward_response_headers_to_upstream":["X-Foo"]}`),
+		},
+		{
+			name: "ok with not allowed headers",
+			setup: func(t *testing.T) *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("X-Bar", "foo")
+					w.WriteHeader(http.StatusOK)
+				}))
+			},
+			session:            new(authn.AuthenticationSession),
+			sessionHeaderMatch: &http.Header{"X-Foo": []string{""}},
+			config:             json.RawMessage(`{"payload":"{}","forward_response_headers_to_upstream":["X-Foo"]}`),
 		},
 		{
 			name: "authentication session",
@@ -136,10 +164,19 @@ func TestAuthorizerRemoteJSONAuthorize(t *testing.T) {
 				tt.config, _ = sjson.SetBytes(tt.config, "remote", server.URL)
 			}
 
-			p := configuration.NewViperProvider(logrus.New())
+			p := configuration.NewViperProvider(logrusx.New("", ""))
 			a := NewAuthorizerRemoteJSON(p)
-			if err := a.Authorize(&http.Request{}, tt.session, tt.config, &rule.Rule{}); (err != nil) != tt.wantErr {
+			r := &http.Request{
+				Header: map[string][]string{
+					"Authorization": {"Bearer token"},
+				},
+			}
+			if err := a.Authorize(r, tt.session, tt.config, &rule.Rule{}); (err != nil) != tt.wantErr {
 				t.Errorf("Authorize() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.sessionHeaderMatch != nil {
+				assert.Equal(t, tt.sessionHeaderMatch, &tt.session.Header)
 			}
 		})
 	}
@@ -189,7 +226,7 @@ func TestAuthorizerRemoteJSONValidate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := configuration.NewViperProvider(logrus.New())
+			p := configuration.NewViperProvider(logrusx.New("", ""))
 			a := NewAuthorizerRemoteJSON(p)
 			viper.Set(configuration.ViperKeyAuthorizerRemoteJSONIsEnabled, tt.enabled)
 			if err := a.Validate(tt.config); (err != nil) != tt.wantErr {

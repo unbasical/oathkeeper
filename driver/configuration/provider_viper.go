@@ -14,9 +14,10 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/rs/cors"
-	"github.com/sirupsen/logrus"
 
 	"github.com/ory/viper"
+	"github.com/ory/x/logrusx"
+	"github.com/ory/x/urlx"
 
 	"github.com/ory/go-convenience/stringsx"
 
@@ -24,7 +25,6 @@ import (
 	"github.com/ory/gojsonschema"
 	"github.com/ory/x/corsx"
 	"github.com/ory/x/tracing"
-	"github.com/ory/x/urlx"
 	"github.com/ory/x/viperx"
 
 	"github.com/ory/oathkeeper/x"
@@ -38,18 +38,22 @@ func init() {
 }
 
 const (
-	ViperKeyProxyReadTimeout           = "serve.proxy.timeout.read"
-	ViperKeyProxyWriteTimeout          = "serve.proxy.timeout.write"
-	ViperKeyProxyIdleTimeout           = "serve.proxy.timeout.idle"
-	ViperKeyProxyServeAddressHost      = "serve.proxy.host"
-	ViperKeyProxyServeAddressPort      = "serve.proxy.port"
-	ViperKeyAPIServeAddressHost        = "serve.api.host"
-	ViperKeyAPIServeAddressPort        = "serve.api.port"
-	ViperKeyPrometheusServeAddressHost = "serve.prometheus.host"
-	ViperKeyPrometheusServeAddressPort = "serve.prometheus.port"
-	ViperKeyPrometheusServeMetricsPath = "serve.prometheus.metrics_path"
-	ViperKeyAccessRuleRepositories     = "access_rules.repositories"
-	ViperKeyAccessRuleMatchingStrategy = "access_rules.matching_strategy"
+	ViperKeyProxyReadTimeout                    = "serve.proxy.timeout.read"
+	ViperKeyProxyWriteTimeout                   = "serve.proxy.timeout.write"
+	ViperKeyProxyIdleTimeout                    = "serve.proxy.timeout.idle"
+	ViperKeyProxyServeAddressHost               = "serve.proxy.host"
+	ViperKeyProxyServeAddressPort               = "serve.proxy.port"
+	ViperKeyAPIServeAddressHost                 = "serve.api.host"
+	ViperKeyAPIServeAddressPort                 = "serve.api.port"
+	ViperKeyAPIReadTimeout                      = "serve.api.timeout.read"
+	ViperKeyAPIWriteTimeout                     = "serve.api.timeout.write"
+	ViperKeyAPIIdleTimeout                      = "serve.api.timeout.idle"
+	ViperKeyPrometheusServeAddressHost          = "serve.prometheus.host"
+	ViperKeyPrometheusServeAddressPort          = "serve.prometheus.port"
+	ViperKeyPrometheusServeMetricsPath          = "serve.prometheus.metrics_path"
+	ViperKeyPrometheusServeCollapseRequestPaths = "serve.prometheus.collapse_request_paths"
+	ViperKeyAccessRuleRepositories              = "access_rules.repositories"
+	ViperKeyAccessRuleMatchingStrategy          = "access_rules.matching_strategy"
 )
 
 // Authorizers
@@ -91,7 +95,9 @@ const (
 	ViperKeyAuthenticatorCookieSessionIsEnabled = "authenticators.cookie_session.enabled"
 
 	// jwt
-	ViperKeyAuthenticatorJWTIsEnabled = "authenticators.jwt.enabled"
+	ViperKeyAuthenticatorJwtIsEnabled  = "authenticators.jwt.enabled"
+	ViperKeyAuthenticatorJwtJwkMaxWait = "authenticators.jwt.config.jwks_max_wait"
+	ViperKeyAuthenticatorJwtJwkTtl     = "authenticators.jwt.config.jwks_ttl"
 
 	// oauth2_client_credentials
 	ViperKeyAuthenticatorOAuth2ClientCredentialsIsEnabled = "authenticators.oauth2_client_credentials.enabled"
@@ -113,7 +119,7 @@ const (
 )
 
 type ViperProvider struct {
-	l logrus.FieldLogger
+	l *logrusx.Logger
 
 	enabledMutex sync.RWMutex
 	enabledCache map[uint64]bool
@@ -122,7 +128,7 @@ type ViperProvider struct {
 	configCache map[uint64]json.RawMessage
 }
 
-func NewViperProvider(l logrus.FieldLogger) *ViperProvider {
+func NewViperProvider(l *logrusx.Logger) *ViperProvider {
 	return &ViperProvider{
 		l:            l,
 		enabledCache: make(map[uint64]bool),
@@ -134,7 +140,7 @@ func (v *ViperProvider) AccessRuleRepositories() []url.URL {
 	sources := viperx.GetStringSlice(v.l, ViperKeyAccessRuleRepositories, []string{})
 	repositories := make([]url.URL, len(sources))
 	for k, source := range sources {
-		repositories[k] = *urlx.ParseOrFatal(v.l, source)
+		repositories[k] = *x.ParseURLOrFatal(v.l, source)
 	}
 
 	return repositories
@@ -173,6 +179,18 @@ func (v *ViperProvider) ProxyServeAddress() string {
 	)
 }
 
+func (v *ViperProvider) APIReadTimeout() time.Duration {
+	return viperx.GetDuration(v.l, ViperKeyAPIReadTimeout, time.Second*5)
+}
+
+func (v *ViperProvider) APIWriteTimeout() time.Duration {
+	return viperx.GetDuration(v.l, ViperKeyAPIWriteTimeout, time.Second*10)
+}
+
+func (v *ViperProvider) APIIdleTimeout() time.Duration {
+	return viperx.GetDuration(v.l, ViperKeyAPIIdleTimeout, time.Second*120)
+}
+
 func (v *ViperProvider) APIServeAddress() string {
 	return fmt.Sprintf(
 		"%s:%d",
@@ -193,10 +211,14 @@ func (v *ViperProvider) PrometheusMetricsPath() string {
 	return viperx.GetString(v.l, ViperKeyPrometheusServeMetricsPath, "/metrics")
 }
 
+func (v *ViperProvider) PrometheusCollapseRequestPaths() bool {
+	return viperx.GetBool(v.l, ViperKeyPrometheusServeCollapseRequestPaths, true)
+}
+
 func (v *ViperProvider) ParseURLs(sources []string) ([]url.URL, error) {
 	r := make([]url.URL, len(sources))
 	for k, u := range sources {
-		p, err := url.Parse(u)
+		p, err := urlx.Parse(u)
 		if err != nil {
 			return nil, err
 		}
@@ -372,6 +394,14 @@ func (v *ViperProvider) AuthenticatorIsEnabled(id string) bool {
 
 func (v *ViperProvider) AuthenticatorConfig(id string, override json.RawMessage, dest interface{}) error {
 	return v.PipelineConfig("authenticators", id, override, dest)
+}
+
+func (v *ViperProvider) AuthenticatorJwtJwkMaxWait() time.Duration {
+	return viperx.GetDuration(v.l, ViperKeyAuthenticatorJwtJwkMaxWait, time.Second)
+}
+
+func (v *ViperProvider) AuthenticatorJwtJwkTtl() time.Duration {
+	return viperx.GetDuration(v.l, ViperKeyAuthenticatorJwtJwkTtl, time.Second*30)
 }
 
 func (v *ViperProvider) AuthorizerIsEnabled(id string) bool {

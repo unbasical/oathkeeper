@@ -3,17 +3,17 @@ package driver
 import (
 	"context"
 	"sync"
-	"time"
 
+	"github.com/ory/oathkeeper/driver/health"
 	"github.com/ory/oathkeeper/pipeline"
 	pe "github.com/ory/oathkeeper/pipeline/errors"
 	"github.com/ory/oathkeeper/proxy"
+	"github.com/ory/oathkeeper/x"
 
 	"github.com/ory/x/logrusx"
 	"github.com/ory/x/tracing"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	"github.com/ory/herodot"
 	"github.com/ory/x/healthx"
@@ -26,6 +26,7 @@ import (
 	ep "github.com/ory/oathkeeper/pipeline/errors"
 	"github.com/ory/oathkeeper/pipeline/mutate"
 	"github.com/ory/oathkeeper/rule"
+	rulereadiness "github.com/ory/oathkeeper/rule/readiness"
 )
 
 var _ Registry = new(RegistryMemory)
@@ -36,7 +37,7 @@ type RegistryMemory struct {
 	buildVersion string
 	buildHash    string
 	buildDate    string
-	logger       logrus.FieldLogger
+	logger       *logrusx.Logger
 	writer       herodot.Writer
 	c            configuration.Provider
 	trc          *tracing.Tracer
@@ -61,6 +62,8 @@ type RegistryMemory struct {
 	mutators       map[string]mutate.Mutator
 	errors         map[string]ep.Handler
 
+	healthEventManager *health.DefaultHealthEventManager
+
 	ruleRepositoryLock sync.Mutex
 }
 
@@ -70,6 +73,7 @@ func (r *RegistryMemory) Init() {
 			r.Logger().WithError(err).Fatal("Access rule watcher terminated with an error.")
 		}
 	}()
+	r.HealthEventManager().Watch(context.Background())
 	_ = r.RuleRepository()
 }
 
@@ -78,6 +82,11 @@ func (r *RegistryMemory) RuleFetcher() rule.Fetcher {
 		r.ruleFetcher = rule.NewFetcherDefault(r.c, r)
 	}
 	return r.ruleFetcher
+}
+
+func (r *RegistryMemory) WithRuleFetcher(fetcher rule.Fetcher) Registry {
+	r.ruleFetcher = fetcher
+	return r
 }
 
 func (r *RegistryMemory) ProxyRequestHandler() *proxy.RequestHandler {
@@ -120,7 +129,7 @@ func (r *RegistryMemory) WithBuildInfo(version, hash, date string) Registry {
 	return r
 }
 
-func (r *RegistryMemory) WithLogger(l logrus.FieldLogger) Registry {
+func (r *RegistryMemory) WithLogger(l *logrusx.Logger) Registry {
 	r.logger = l
 	return r
 }
@@ -133,9 +142,23 @@ func (r *RegistryMemory) CredentialHandler() *api.CredentialsHandler {
 	return r.ch
 }
 
+func (r *RegistryMemory) HealthEventManager() health.EventManager {
+	if r.healthEventManager == nil {
+		var err error
+		rulesReadinessChecker := rulereadiness.NewReadinessHealthChecker()
+		if r.healthEventManager, err = health.NewDefaultHealthEventManager(rulesReadinessChecker); err != nil {
+			r.logger.WithError(err).Fatal("unable to instantiate new health event manager")
+		}
+	}
+	return r.healthEventManager
+}
+
 func (r *RegistryMemory) HealthHandler() *healthx.Handler {
+	r.RLock()
+	defer r.RUnlock()
+
 	if r.healthxHandler == nil {
-		r.healthxHandler = healthx.NewHandler(r.Writer(), r.BuildVersion(), healthx.ReadyCheckers{})
+		r.healthxHandler = healthx.NewHandler(r.Writer(), r.BuildVersion(), r.HealthEventManager().HealthxReadyCheckers())
 	}
 	return r.healthxHandler
 }
@@ -149,21 +172,21 @@ func (r *RegistryMemory) RuleValidator() rule.Validator {
 
 func (r *RegistryMemory) RuleRepository() rule.Repository {
 	if r.ruleRepository == nil {
-		r.ruleRepository = rule.NewRepositoryMemory(r)
+		r.ruleRepository = rule.NewRepositoryMemory(r, r.HealthEventManager())
 	}
 	return r.ruleRepository
 }
 
 func (r *RegistryMemory) Writer() herodot.Writer {
 	if r.writer == nil {
-		r.writer = herodot.NewJSONWriter(r.Logger())
+		r.writer = herodot.NewJSONWriter(r.Logger().Logger)
 	}
 	return r.writer
 }
 
-func (r *RegistryMemory) Logger() logrus.FieldLogger {
+func (r *RegistryMemory) Logger() *logrusx.Logger {
 	if r.logger == nil {
-		r.logger = logrusx.New()
+		r.logger = logrusx.New("ORY Oathkeeper", x.Version)
 	}
 	return r.logger
 }
@@ -184,7 +207,7 @@ func (r *RegistryMemory) DecisionHandler() *api.DecisionHandler {
 
 func (r *RegistryMemory) CredentialsFetcher() credentials.Fetcher {
 	if r.credentialsFetcher == nil {
-		r.credentialsFetcher = credentials.NewFetcherDefault(r.Logger(), time.Second, time.Second*30)
+		r.credentialsFetcher = credentials.NewFetcherDefault(r.Logger(), r.c.AuthenticatorJwtJwkMaxWait(), r.c.AuthenticatorJwtJwkTtl())
 	}
 
 	return r.credentialsFetcher
@@ -343,10 +366,11 @@ func (r *RegistryMemory) prepareAuthn() {
 		interim := []authn.Authenticator{
 			authn.NewAuthenticatorAnonymous(r.c),
 			authn.NewAuthenticatorCookieSession(r.c),
+			authn.NewAuthenticatorBearerToken(r.c),
 			authn.NewAuthenticatorJWT(r.c, r),
 			authn.NewAuthenticatorNoOp(r.c),
 			authn.NewAuthenticatorOAuth2ClientCredentials(r.c),
-			authn.NewAuthenticatorOAuth2Introspection(r.c),
+			authn.NewAuthenticatorOAuth2Introspection(r.c, r.Logger()),
 			authn.NewAuthenticatorUnauthorized(r.c),
 		}
 

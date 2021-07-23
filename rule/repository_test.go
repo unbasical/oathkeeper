@@ -26,17 +26,20 @@ import (
 	"testing"
 
 	"github.com/bxcodec/faker"
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ory/x/healthx"
+
+	"github.com/ory/x/logrusx"
 
 	"github.com/ory/x/sqlcon/dockertest"
 
 	"github.com/ory/oathkeeper/driver/configuration"
+	"github.com/ory/oathkeeper/driver/health"
 )
 
 func TestMain(m *testing.M) {
@@ -53,6 +56,21 @@ func (v *validatorNoop) Validate(*Rule) error {
 	return v.ret
 }
 
+type mockHealthEventManager struct {
+}
+
+func (m *mockHealthEventManager) Dispatch(evt health.ReadinessProbeEvent) {
+
+}
+
+func (m *mockHealthEventManager) Watch(ctx context.Context) {
+
+}
+
+func (m *mockHealthEventManager) HealthxReadyCheckers() healthx.ReadyCheckers {
+	return nil
+}
+
 type mockRepositoryRegistry struct {
 	v            validatorNoop
 	loggerCalled int
@@ -61,15 +79,14 @@ type mockRepositoryRegistry struct {
 func (r *mockRepositoryRegistry) RuleValidator() Validator {
 	return &r.v
 }
-func (r *mockRepositoryRegistry) Logger() logrus.FieldLogger {
+func (r *mockRepositoryRegistry) Logger() *logrusx.Logger {
 	r.loggerCalled++
-	return logrus.New()
+	return logrusx.New("", "")
 }
 
 func TestRepository(t *testing.T) {
 	for name, repo := range map[string]Repository{
-		"memory": NewRepositoryMemory(
-			new(mockRepositoryRegistry)),
+		"memory": NewRepositoryMemory(new(mockRepositoryRegistry), new(mockHealthEventManager)),
 	} {
 		t.Run(fmt.Sprintf("repository=%s/case=valid rule", name), func(t *testing.T) {
 			var rules []Rule
@@ -138,7 +155,7 @@ func TestRepository(t *testing.T) {
 	var index int
 	mr := &mockRepositoryRegistry{v: validatorNoop{ret: errors.New("this is a forced test error and can be ignored")}}
 	for name, repo := range map[string]Repository{
-		"memory": NewRepositoryMemory(mr),
+		"memory": NewRepositoryMemory(mr, new(mockHealthEventManager)),
 	} {
 		t.Run(fmt.Sprintf("repository=%s/case=invalid rule", name), func(t *testing.T) {
 			var rule Rule

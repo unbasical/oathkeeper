@@ -28,16 +28,24 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/ory/oathkeeper/internal/cloudstorage"
+
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"gopkg.in/square/go-jose.v2"
+
+	"github.com/ory/x/logrusx"
+	"github.com/ory/x/urlx"
 
 	"github.com/ory/herodot"
 	"github.com/ory/x/httpx"
+
+	"gocloud.dev/blob"
+	_ "gocloud.dev/blob/azureblob"
+	_ "gocloud.dev/blob/gcsblob"
+	_ "gocloud.dev/blob/s3blob"
 )
 
 type reasoner interface {
@@ -54,7 +62,8 @@ type FetcherDefault struct {
 	client      *http.Client
 	keys        map[string]jose.JSONWebKeySet
 	fetchedAt   map[string]time.Time
-	l           logrus.FieldLogger
+	l           *logrusx.Logger
+	mux         *blob.URLMux
 }
 
 // NewFetcherDefault returns a new JWKS Fetcher with:
@@ -62,7 +71,7 @@ type FetcherDefault struct {
 // - cancelAfter: If reached, the fetcher will stop waiting for responses and return an error.
 // - waitForResponse: While the fetcher might stop waiting for responses, we will give the server more time to respond
 //		and add the keys to the registry unless waitForResponse is reached in which case we'll terminate the request.
-func NewFetcherDefault(l logrus.FieldLogger, cancelAfter time.Duration, ttl time.Duration) *FetcherDefault {
+func NewFetcherDefault(l *logrusx.Logger, cancelAfter time.Duration, ttl time.Duration) *FetcherDefault {
 	return &FetcherDefault{
 		cancelAfter: cancelAfter,
 		l:           l,
@@ -70,17 +79,18 @@ func NewFetcherDefault(l logrus.FieldLogger, cancelAfter time.Duration, ttl time
 		keys:        make(map[string]jose.JSONWebKeySet),
 		fetchedAt:   make(map[string]time.Time),
 		client:      httpx.NewResilientClientLatencyToleranceHigh(nil),
+		mux:         cloudstorage.NewURLMux(),
 	}
 }
 
 func (s *FetcherDefault) ResolveSets(ctx context.Context, locations []url.URL) ([]jose.JSONWebKeySet, error) {
-	if set := s.set(locations); set != nil {
+	if set := s.set(locations, false); set != nil {
 		return set, nil
 	}
 
-	s.fetchParallel(ctx, locations)
+	fetchError := s.fetchParallel(ctx, locations)
 
-	if set := s.set(locations); set != nil {
+	if set := s.set(locations, errors.Is(fetchError, context.DeadlineExceeded)); set != nil {
 		return set, nil
 	}
 
@@ -90,7 +100,7 @@ func (s *FetcherDefault) ResolveSets(ctx context.Context, locations []url.URL) (
 	)
 }
 
-func (s *FetcherDefault) fetchParallel(ctx context.Context, locations []url.URL) {
+func (s *FetcherDefault) fetchParallel(ctx context.Context, locations []url.URL) error {
 	ctx, cancel := context.WithTimeout(ctx, s.cancelAfter)
 	defer cancel()
 	errs := make(chan error)
@@ -113,20 +123,22 @@ func (s *FetcherDefault) fetchParallel(ctx context.Context, locations []url.URL)
 
 	select {
 	case <-ctx.Done():
-		s.l.Errorf("Ignoring JSON Web Keys from at least one URI because the request timed out waiting for a response.")
+		s.l.WithError(ctx.Err()).Errorf("Ignoring JSON Web Keys from at least one URI because the request timed out waiting for a response.")
+		return ctx.Err()
 	case <-done:
 		// We're done!
+		return nil
 	}
 }
 
 func (s *FetcherDefault) ResolveKey(ctx context.Context, locations []url.URL, kid string, use string) (*jose.JSONWebKey, error) {
-	if key := s.key(kid, locations, use); key != nil {
+	if key := s.key(kid, locations, use, false); key != nil {
 		return key, nil
 	}
 
-	s.fetchParallel(ctx, locations)
+	fetchError := s.fetchParallel(ctx, locations)
 
-	if key := s.key(kid, locations, use); key != nil {
+	if key := s.key(kid, locations, use, errors.Is(fetchError, context.DeadlineExceeded)); key != nil {
 		return key, nil
 	}
 
@@ -138,14 +150,14 @@ func (s *FetcherDefault) ResolveKey(ctx context.Context, locations []url.URL, ki
 	)
 }
 
-func (s *FetcherDefault) key(kid string, locations []url.URL, use string) *jose.JSONWebKey {
+func (s *FetcherDefault) key(kid string, locations []url.URL, use string, staleKeyAcceptable bool) *jose.JSONWebKey {
 	for _, l := range locations {
 		s.RLock()
 		keys, ok1 := s.keys[l.String()]
 		fetchedAt, ok2 := s.fetchedAt[l.String()]
 		s.RUnlock()
 
-		if !ok1 || !ok2 || fetchedAt.Add(s.ttl).Before(time.Now().UTC()) {
+		if !ok1 || !ok2 || s.isKeyExpired(staleKeyAcceptable, fetchedAt) {
 			continue
 		}
 
@@ -159,7 +171,7 @@ func (s *FetcherDefault) key(kid string, locations []url.URL, use string) *jose.
 	return nil
 }
 
-func (s *FetcherDefault) set(locations []url.URL) []jose.JSONWebKeySet {
+func (s *FetcherDefault) set(locations []url.URL, staleKeyAcceptable bool) []jose.JSONWebKeySet {
 	var result []jose.JSONWebKeySet
 	for _, l := range locations {
 		s.RLock()
@@ -167,7 +179,7 @@ func (s *FetcherDefault) set(locations []url.URL) []jose.JSONWebKeySet {
 		fetchedAt, ok2 := s.fetchedAt[l.String()]
 		s.RUnlock()
 
-		if !ok1 || !ok2 || fetchedAt.Add(s.ttl).Before(time.Now().UTC()) {
+		if !ok1 || !ok2 || s.isKeyExpired(staleKeyAcceptable, fetchedAt) {
 			continue
 		}
 
@@ -175,6 +187,11 @@ func (s *FetcherDefault) set(locations []url.URL) []jose.JSONWebKeySet {
 	}
 
 	return result
+}
+
+func (s *FetcherDefault) isKeyExpired(expiredKeyAcceptable bool, fetchedAt time.Time) bool {
+	return expiredKeyAcceptable == false &&
+		fetchedAt.Add(s.ttl).Before(time.Now().UTC())
 }
 
 func (s *FetcherDefault) resolveAll(done chan struct{}, errs chan error, locations []url.URL) {
@@ -195,8 +212,45 @@ func (s *FetcherDefault) resolve(wg *sync.WaitGroup, errs chan error, location u
 	var reader io.Reader
 
 	switch location.Scheme {
+	case "azblob":
+		fallthrough
+	case "gs":
+		fallthrough
+	case "s3":
+		ctx := context.Background()
+		bucket, err := s.mux.OpenBucket(ctx, location.Scheme+"://"+location.Host)
+		if err != nil {
+			errs <- errors.WithStack(herodot.
+				ErrInternalServerError.
+				WithReasonf(
+					`Unable to fetch JSON Web Keys from location "%s" because "%s".`,
+					location.String(),
+					err,
+				),
+			)
+			return
+		}
+		defer bucket.Close()
+
+		r, err := bucket.NewReader(ctx, location.Path[1:], nil)
+		if err != nil {
+			errs <- errors.WithStack(herodot.
+				ErrInternalServerError.
+				WithReasonf(
+					`Unable to fetch JSON Web Keys from location "%s" because "%s".`,
+					location.String(),
+					err,
+				),
+			)
+			return
+		}
+		defer r.Close()
+
+		reader = r
+	case "":
+		fallthrough
 	case "file":
-		f, err := os.Open(strings.Replace(location.String(), "file://", "", 1))
+		f, err := os.Open(urlx.GetURLFilePath(&location))
 		if err != nil {
 			errs <- errors.WithStack(herodot.
 				ErrInternalServerError.

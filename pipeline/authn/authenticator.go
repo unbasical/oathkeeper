@@ -47,8 +47,10 @@ type AuthenticationSession struct {
 }
 
 type MatchContext struct {
-	RegexpCaptureGroups []string `json:"regexp_capture_groups"`
-	URL                 *url.URL `json:"url"`
+	RegexpCaptureGroups []string    `json:"regexp_capture_groups"`
+	URL                 *url.URL    `json:"url"`
+	Method              string      `json:"method"`
+	Header              http.Header `json:"header"`
 }
 
 func (a *AuthenticationSession) SetHeader(key, val string) {

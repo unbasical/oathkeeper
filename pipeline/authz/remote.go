@@ -21,8 +21,9 @@ import (
 
 // AuthorizerRemoteConfiguration represents a configuration for the remote authorizer.
 type AuthorizerRemoteConfiguration struct {
-	Remote  string            `json:"remote"`
-	Headers map[string]string `json:"headers"`
+	Remote                           string            `json:"remote"`
+	Headers                          map[string]string `json:"headers"`
+	ForwardResponseHeadersToUpstream []string          `json:"forward_response_headers_to_upstream"`
 }
 
 // AuthorizerRemote implements the Authorizer interface.
@@ -65,6 +66,10 @@ func (a *AuthorizerRemote) Authorize(r *http.Request, session *authn.Authenticat
 		return errors.WithStack(err)
 	}
 	req.Header.Add("Content-Type", r.Header.Get("Content-Type"))
+	authz := r.Header.Get("Authorization")
+	if authz != "" {
+		req.Header.Add("Authorization", authz)
+	}
 
 	for hdr, templateString := range c.Headers {
 		var tmpl *template.Template
@@ -92,7 +97,7 @@ func (a *AuthorizerRemote) Authorize(r *http.Request, session *authn.Authenticat
 		req.Header.Set(hdr, headerValue.String())
 	}
 
-	res, err := a.client.Do(req)
+	res, err := a.client.Do(req.WithContext(r.Context()))
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -102,6 +107,10 @@ func (a *AuthorizerRemote) Authorize(r *http.Request, session *authn.Authenticat
 		return errors.WithStack(helper.ErrForbidden)
 	} else if res.StatusCode != http.StatusOK {
 		return errors.Errorf("expected status code %d but got %d", http.StatusOK, res.StatusCode)
+	}
+
+	for _, allowedHeader := range c.ForwardResponseHeadersToUpstream {
+		session.SetHeader(allowedHeader, res.Header.Get(allowedHeader))
 	}
 
 	return nil

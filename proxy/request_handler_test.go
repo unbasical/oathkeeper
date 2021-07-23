@@ -33,19 +33,20 @@ import (
 	"github.com/ory/herodot"
 	"github.com/ory/viper"
 
-	"github.com/ory/x/urlx"
-
 	"github.com/ory/oathkeeper/driver/configuration"
 	"github.com/ory/oathkeeper/internal"
 	"github.com/ory/oathkeeper/pipeline/authn"
+	"github.com/ory/oathkeeper/x"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/ory/oathkeeper/rule"
 )
 
+var TestHeader = http.Header{"Test-Header": []string{"Test-Value"}}
+
 func newTestRequest(u string) *http.Request {
-	return &http.Request{URL: urlx.ParseOrPanic(u)}
+	return &http.Request{URL: x.ParseURLOrPanic(u), Method: "GET", Header: TestHeader}
 }
 
 func TestHandleError(t *testing.T) {
@@ -477,7 +478,9 @@ func TestInitializeSession(t *testing.T) {
 			},
 			expectContext: authn.MatchContext{
 				RegexpCaptureGroups: []string{},
-				URL:                 urlx.ParseOrPanic("http://localhost"),
+				URL:                 x.ParseURLOrPanic("http://localhost"),
+				Method:              "GET",
+				Header:              TestHeader,
 			},
 		},
 		{
@@ -489,7 +492,9 @@ func TestInitializeSession(t *testing.T) {
 			},
 			expectContext: authn.MatchContext{
 				RegexpCaptureGroups: []string{"user"},
-				URL:                 urlx.ParseOrPanic("http://localhost/user"),
+				URL:                 x.ParseURLOrPanic("http://localhost/user"),
+				Method:              "GET",
+				Header:              TestHeader,
 			},
 		},
 		{
@@ -501,7 +506,9 @@ func TestInitializeSession(t *testing.T) {
 			},
 			expectContext: authn.MatchContext{
 				RegexpCaptureGroups: []string{"user"},
-				URL:                 urlx.ParseOrPanic("http://localhost/user?param=test"),
+				URL:                 x.ParseURLOrPanic("http://localhost/user?param=test"),
+				Method:              "GET",
+				Header:              TestHeader,
 			},
 		},
 		{
@@ -513,7 +520,9 @@ func TestInitializeSession(t *testing.T) {
 			},
 			expectContext: authn.MatchContext{
 				RegexpCaptureGroups: []string{"http", "user"},
-				URL:                 urlx.ParseOrPanic("http://localhost/user?param=test"),
+				URL:                 x.ParseURLOrPanic("http://localhost/user?param=test"),
+				Method:              "GET",
+				Header:              TestHeader,
 			},
 		},
 		{
@@ -525,7 +534,9 @@ func TestInitializeSession(t *testing.T) {
 			},
 			expectContext: authn.MatchContext{
 				RegexpCaptureGroups: []string{},
-				URL:                 urlx.ParseOrPanic("http://localhost/user?param=test"),
+				URL:                 x.ParseURLOrPanic("http://localhost/user?param=test"),
+				Method:              "GET",
+				Header:              TestHeader,
 			},
 		},
 	} {
@@ -545,6 +556,7 @@ func TestInitializeSession(t *testing.T) {
 			session := reg.ProxyRequestHandler().InitializeAuthnSession(tc.r, &rule)
 
 			assert.NotNil(t, session)
+			assert.NotNil(t, session.MatchContext.Header)
 			assert.EqualValues(t, tc.expectContext, session.MatchContext)
 		})
 	}

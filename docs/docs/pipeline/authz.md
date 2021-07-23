@@ -33,7 +33,7 @@ Each authorizer has two keys:
 There is a 1:1 mandatory relationship between an authoriser and an access rule.
 It is not possible to configure more than one authorizer per Access Rule.
 
-## Authorizer `allow`
+## `allow`
 
 This authorizer permits every action allowed.
 
@@ -78,7 +78,7 @@ HTTP/1.0 200 Status OK
 The request has been allowed!
 ```
 
-## Authorizer`deny`
+## `deny`
 
 This authorizer considers every action unauthorized therefore "forbidden" or
 "disallowed".
@@ -124,7 +124,7 @@ HTTP/1.0 403 Forbidden
 The request is forbidden!
 ```
 
-## Authorizer `keto_engine_acp_ory`
+## `keto_engine_acp_ory`
 
 This authorizer uses the ORY Keto API to carry out access control using
 "ORY-flavored" Access Control Policies. The conventions used in the ORY Keto
@@ -202,7 +202,7 @@ If `subject` is not specified it will default to
 `AuthenticationSession.Subject`.
 
 For more details about supported Go template substitution, see.
-[How to use session variables](index.md#session)
+[How to use session variables](../pipeline.md#session)
 
 #### Example
 
@@ -291,7 +291,10 @@ if it returns a "403 Forbidden" response code, the access is denied.
   [`text/template`](https://golang.org/pkg/text/template/) package and applied
   to an
   [`AuthenticationSession`](https://github.com/ory/oathkeeper/blob/master/pipeline/authn/authenticator.go#L40)
-  object. See [Session](index.md#session) for more details.
+  object. See [Session](../pipeline.md#session) for more details.
+- `forward_response_headers_to_upstream` (slice of strings, optional) - The HTTP
+  headers that will be allowed from remote authorizer responses. If returned,
+  headers on this list will be forward to upstream services.
 
 #### Example
 
@@ -344,7 +347,10 @@ authorizers:
       "remote": "http://my-remote-authorizer/authorize",
       "headers": {
         "X-Subject": "{{ print .Subject }}"
-      }
+      },
+      "forward_response_headers_to_upstream": [
+        "X-Foo"
+      ]
     }
   }
   "mutators": [
@@ -372,7 +378,10 @@ Forbidden" response code, the access is denied.
   [`text/template`](https://golang.org/pkg/text/template/) package and applied
   to an
   [`AuthenticationSession`](https://github.com/ory/oathkeeper/blob/master/pipeline/authn/authenticator.go#L40)
-  object. See [Session](index.md#session) for more details.
+  object. See [Session](../pipeline.md#session) for more details.
+- `forward_response_headers_to_upstream` (slice of strings, optional) - The HTTP
+  headers that will be allowed from remote authorizer responses. If returned,
+  headers on this list will be forward to upstream services.
 
 #### Example
 
@@ -430,7 +439,10 @@ authorizers:
     "config": {
       "remote": "http://my-remote-authorizer/authorize",
       "payload": "{\"subject\": \"{{ print .Subject }}\", \"resource\": \"{{ printIndex .MatchContext.RegexpCaptureGroups 0 }}\"}"
-    }
+    },
+    "forward_response_headers_to_upstream": [
+      "X-Foo"
+    ]
   }
   "mutators": [
     {

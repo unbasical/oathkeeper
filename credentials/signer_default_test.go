@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/form3tech-oss/jwt-go"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ory/x/urlx"
+	"github.com/ory/oathkeeper/x"
+	"github.com/ory/x/logrusx"
 )
 
 type defaultSignerMockRegistry struct {
@@ -20,7 +20,7 @@ type defaultSignerMockRegistry struct {
 }
 
 func newDefaultSignerMockRegistry() *defaultSignerMockRegistry {
-	return &defaultSignerMockRegistry{f: NewFetcherDefault(logrus.New(), time.Millisecond*100, time.Millisecond*500)}
+	return &defaultSignerMockRegistry{f: NewFetcherDefault(logrusx.New("", ""), time.Millisecond*100, time.Millisecond*500)}
 }
 
 func (m *defaultSignerMockRegistry) CredentialsFetcher() Fetcher {
@@ -36,10 +36,10 @@ func TestSignerDefault(t *testing.T) {
 		"file://../test/stub/jwks-rsa-single.json",
 	} {
 		t.Run(fmt.Sprintf("src=%s", src), func(t *testing.T) {
-			token, err := signer.Sign(context.Background(), urlx.ParseOrPanic(src), jwt.MapClaims{"sub": "foo"})
+			token, err := signer.Sign(context.Background(), x.ParseURLOrPanic(src), jwt.MapClaims{"sub": "foo"})
 			require.NoError(t, err)
 
-			fetcher := NewFetcherDefault(logrus.New(), time.Second, time.Second)
+			fetcher := NewFetcherDefault(logrusx.New("", ""), time.Second, time.Second)
 
 			_, err = verify(t, token, fetcher, src)
 			require.NoError(t, err)
@@ -57,7 +57,7 @@ func verify(t *testing.T, token string, f Fetcher, u string) (*jwt.Token, error)
 
 		t.Logf("Looking up kid: %s", kid)
 
-		key, err := f.ResolveKey(context.Background(), []url.URL{*urlx.ParseOrPanic(u)}, kid, "sig")
+		key, err := f.ResolveKey(context.Background(), []url.URL{*x.ParseURLOrPanic(u)}, kid, "sig")
 		if err != nil {
 			t.Logf("erri erro: %+v", err)
 			return nil, errors.WithStack(err)

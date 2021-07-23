@@ -1,31 +1,61 @@
 SHELL=/bin/bash -o pipefail
 
-.PHONY: tools
-tools:
-		GO111MODULE=on go install github.com/ory/go-acc github.com/ory/x/tools/listx github.com/go-swagger/go-swagger/cmd/swagger github.com/sqs/goreturns github.com/ory/sdk/swagutil
+export GO111MODULE := on
+export PATH := .bin:${PATH}
+export PWD := $(shell pwd)
+
+GO_DEPENDENCIES = github.com/ory/go-acc \
+				  golang.org/x/tools/cmd/goimports \
+				  github.com/go-swagger/go-swagger/cmd/swagger \
+				  github.com/ory/cli \
+				  github.com/gobuffalo/packr/v2/packr2 \
+				  github.com/go-bindata/go-bindata/go-bindata
+
+define make-go-dependency
+  # go install is responsible for not re-building when the code hasn't changed
+  .bin/$(notdir $1): go.sum go.mod
+		GOBIN=$(PWD)/.bin/ go install $1
+endef
+$(foreach dep, $(GO_DEPENDENCIES), $(eval $(call make-go-dependency, $(dep))))
+
+node_modules: package.json package-lock.json
+		npm i
+
+docs/node_modules: docs/package.json docs/package-lock.json
+		cd docs; npm i
+
+.bin/clidoc: go.mod
+		go build -o .bin/clidoc ./cmd/clidoc/.
 
 # Formats the code
 .PHONY: format
-format:
-		goreturns -w -local github.com/ory $$(listx .)
+format: .bin/goimports node_modules docs/node_modules
+		goimports -w --local github.com/ory .
+		npm run format
+		cd docs; npm run format
 
 .PHONY: gen
-		gen: mocks sdk
+gen:
+		mocks sdk
+
+.bin/ory: Makefile
+		bash <(curl https://raw.githubusercontent.com/ory/cli/master/install.sh) -b .bin v0.0.53
+		touch -a -m .bin/ory
 
 # Generates the SDKs
 .PHONY: sdk
-sdk:
-		$$(go env GOPATH)/bin/swagger generate spec -m -o ./.schema/api.swagger.json -x internal/httpclient
-		$$(go env GOPATH)/bin/swagutil sanitize ./.schema/api.swagger.json
-		$$(go env GOPATH)/bin/swagger flatten --with-flatten=remove-unused -o ./.schema/api.swagger.json ./.schema/api.swagger.json
-		$$(go env GOPATH)/bin/swagger validate ./.schema/api.swagger.json
+sdk: .bin/packr2 .bin/swagger .bin/ory
+		swagger generate spec -m -o ./spec/api.json -x internal/httpclient
+		ory dev swagger sanitize ./spec/api.json
+		swagger flatten --with-flatten=remove-unused -o ./spec/api.json ./spec/api.json
+		swagger validate ./spec/api.json
 		rm -rf internal/httpclient
 		mkdir -p internal/httpclient
-		$$(go env GOPATH)/bin/swagger generate client -f ./.schema/api.swagger.json -t internal/httpclient -A Ory_Oathkeeper
+		swagger generate client -f ./spec/api.json -t internal/httpclient -A Ory_Oathkeeper
 		make format
 
 .PHONY: install-stable
-install-stable:
+install-stable: .bin/packr2
 		OATHKEEPER_LATEST=$$(git describe --abbrev=0 --tags)
 		git checkout $$OATHKEEPER_LATEST
 		packr2
@@ -36,19 +66,22 @@ install-stable:
 		git checkout master
 
 .PHONY: install
-install:
+install: .bin/packr2
 		packr2 || (GO111MODULE=on go install github.com/gobuffalo/packr/v2/packr2 && packr2)
 		GO111MODULE=on go install .
 		packr2 clean
 
 .PHONY: docker
-docker:
+docker: .bin/packr2
 		packr2 || (GO111MODULE=on go install github.com/gobuffalo/packr/v2/packr2 && packr2)
 		CGO_ENABLED=0 GO111MODULE=on GOOS=linux GOARCH=amd64 go build
 		packr2 clean
 		docker build -t kelonio/oathkeeper:v0.38.1-beta.3-opa .
 		docker build -t kelonio/oathkeeper:v0.38.1-beta.3-opa-alpine -f Dockerfile-alpine .
 		rm oathkeeper
+
+docs/cli: .bin/clidoc
+		clidoc .
 
 # docker push kelonio/oathkeeper:v0.38.1-beta.1-opa
 # docker push kelonio/oathkeeper:v0.38.1-beta.1-opa-alpine

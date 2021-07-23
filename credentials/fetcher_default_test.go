@@ -13,8 +13,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ory/oathkeeper/x"
+	"github.com/ory/x/logrusx"
+
 	"github.com/ory/herodot"
 	"github.com/ory/x/urlx"
+
+	"github.com/ory/oathkeeper/internal/cloudstorage"
 )
 
 var sets = [...]json.RawMessage{
@@ -26,15 +31,19 @@ var sets = [...]json.RawMessage{
 
 func TestFetcherDefault(t *testing.T) {
 	const maxWait = time.Millisecond * 100
+	const JWKsTTL = maxWait * 7
+	const timeoutServerDelay = maxWait * 2
 
-	l := logrus.New()
-	l.Level = logrus.DebugLevel
+	t.Cleanup(func() {
+		cloudstorage.SetCurrentTest(nil)
+	})
 
-	w := herodot.NewJSONWriter(l)
-	s := NewFetcherDefault(l, maxWait, maxWait*7)
+	l := logrusx.New("", "", logrusx.ForceLevel(logrus.DebugLevel))
+	w := herodot.NewJSONWriter(l.Logger)
+	s := NewFetcherDefault(l, maxWait, JWKsTTL)
 
 	timeOutServer := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		time.Sleep(maxWait * 2)
+		time.Sleep(timeoutServerDelay)
 		w.Write(rw, r, sets[0])
 	}))
 	defer timeOutServer.Close()
@@ -57,13 +66,13 @@ func TestFetcherDefault(t *testing.T) {
 	defer invalidServer.Close()
 
 	uris := []url.URL{
-		*urlx.ParseOrPanic(timeOutServer.URL),
-		*urlx.ParseOrPanic(slowServer.URL),
-		*urlx.ParseOrPanic(fastServer.URL),
-		*urlx.ParseOrPanic(invalidServer.URL),
-		*urlx.ParseOrPanic("file://../test/stub/jwks-hs.json"),
-		*urlx.ParseOrPanic("file://../test/stub/jwks-rsa-single.json"),
-		*urlx.ParseOrPanic("file://../test/stub/jwks-rsa-multiple.json"),
+		*x.ParseURLOrPanic(timeOutServer.URL),
+		*x.ParseURLOrPanic(slowServer.URL),
+		*x.ParseURLOrPanic(fastServer.URL),
+		*x.ParseURLOrPanic(invalidServer.URL),
+		*x.ParseURLOrPanic("file://../test/stub/jwks-hs.json"),
+		*x.ParseURLOrPanic("file://../test/stub/jwks-rsa-single.json"),
+		*x.ParseURLOrPanic("file://../test/stub/jwks-rsa-multiple.json"),
 	}
 
 	t.Run("name=should result in error because server times out", func(t *testing.T) {
@@ -145,5 +154,58 @@ func TestFetcherDefault(t *testing.T) {
 		// Check if some random keys exists
 		assert.True(t, check("f4190122-ae96-4c29-8b79-56024e459d80"))
 		assert.True(t, check("8e884167-1300-4f58-8cc1-81af68f878a8"))
+	})
+
+	time.Sleep(
+		timeoutServerDelay +
+			JWKsTTL +
+			(time.Millisecond * 100)) // wait so the fetched key reaches ttl
+	// change "alg" for "c61308cc-faef-4b98-99c3-839f513ac296",
+	// so we are sure we get the "stale" data in `name=should find the previously fetched key if the refresh request times out`
+	sets[0] = json.RawMessage(`{"keys":[{"use":"sig","kty":"oct","kid":"c61308cc-faef-4b98-99c3-839f513ac296","k":"I2_YrZxll-Uq65GKjnJq4u7uNub8hG5cBvlHRz03w94","alg":"RS256"}]}`)
+
+	t.Run("name=should find the previously fetched key if the refresh request times out", func(t *testing.T) {
+		key, err := s.ResolveKey(context.Background(), uris, "c61308cc-faef-4b98-99c3-839f513ac296", "sig")
+		require.NoError(t, err)
+		assert.Equal(t, "HS256", key.Algorithm)
+	})
+
+	t.Run("name=should fetch from s3 object storage", func(t *testing.T) {
+		ctx := context.Background()
+		cloudstorage.SetCurrentTest(t)
+
+		s := NewFetcherDefault(l, maxWait, JWKsTTL)
+
+		key, err := s.ResolveKey(ctx, []url.URL{
+			*urlx.ParseOrPanic("s3://oathkeeper-test-bucket/path/prefix/jwks.json"),
+		}, "81be3441-5303-4c52-b00d-bbdfadc75633", "sig")
+		require.NoError(t, err)
+		assert.Equal(t, "81be3441-5303-4c52-b00d-bbdfadc75633", key.KeyID)
+	})
+
+	t.Run("name=should fetch from gs object storage", func(t *testing.T) {
+		ctx := context.Background()
+		cloudstorage.SetCurrentTest(t)
+
+		s := NewFetcherDefault(l, maxWait, JWKsTTL)
+
+		key, err := s.ResolveKey(ctx, []url.URL{
+			*urlx.ParseOrPanic("gs://oathkeeper-test-bucket/path/prefix/jwks.json"),
+		}, "81be3441-5303-4c52-b00d-bbdfadc75633", "sig")
+		require.NoError(t, err)
+		assert.Equal(t, "81be3441-5303-4c52-b00d-bbdfadc75633", key.KeyID)
+	})
+
+	t.Run("name=should fetch from azure object storage", func(t *testing.T) {
+		ctx := context.Background()
+		cloudstorage.SetCurrentTest(t)
+
+		s := NewFetcherDefault(l, maxWait, JWKsTTL)
+
+		jwkKey, err := s.ResolveKey(ctx, []url.URL{
+			*urlx.ParseOrPanic("azblob://path/prefix/jwks.json"),
+		}, "81be3441-5303-4c52-b00d-bbdfadc75633", "sig")
+		require.NoError(t, err)
+		assert.Equal(t, "81be3441-5303-4c52-b00d-bbdfadc75633", jwkKey.KeyID)
 	})
 }
