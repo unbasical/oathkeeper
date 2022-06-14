@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/ory/x/httpx"
 	"github.com/pkg/errors"
@@ -40,9 +41,11 @@ type AuthorizerOPA struct {
 // NewAuthorizerOPA creates a new AuthorizerOPA.
 func NewAuthorizerOPA(c configuration.Provider) *AuthorizerOPA {
 	return &AuthorizerOPA{
-		c:      c,
-		client: httpx.NewResilientClientLatencyToleranceHigh(nil),
-		t:      x.NewTemplate("opa"),
+		c: c,
+		client: httpx.NewResilientClientLatencyToleranceHigh(
+			httpx.NewDefaultResilientRoundTripper(time.Second*30, time.Second*35),
+		),
+		t: x.NewTemplate("opa"),
 	}
 }
 
