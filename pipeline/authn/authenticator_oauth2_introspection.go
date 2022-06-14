@@ -15,9 +15,6 @@ import (
 
 	"github.com/dgraph-io/ristretto"
 
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2/clientcredentials"
 
@@ -28,6 +25,7 @@ import (
 	"github.com/ory/oathkeeper/driver/configuration"
 	"github.com/ory/oathkeeper/helper"
 	"github.com/ory/oathkeeper/pipeline"
+	"github.com/ory/oathkeeper/x"
 )
 
 type AuthenticatorOAuth2IntrospectionConfiguration struct {
@@ -82,18 +80,49 @@ func (a *AuthenticatorOAuth2Introspection) GetID() string {
 	return "oauth2_introspection"
 }
 
+type Audience []string
+
 type AuthenticatorOAuth2IntrospectionResult struct {
 	Active    bool                   `json:"active"`
 	Extra     map[string]interface{} `json:"ext"`
 	Subject   string                 `json:"sub,omitempty"`
 	Username  string                 `json:"username"`
-	Audience  []string               `json:"aud"`
+	Audience  Audience               `json:"aud,omitempty"`
 	TokenType string                 `json:"token_type"`
 	Issuer    string                 `json:"iss"`
 	ClientID  string                 `json:"client_id,omitempty"`
 	Scope     string                 `json:"scope,omitempty"`
 	Expires   int64                  `json:"exp"`
 	TokenUse  string                 `json:"token_use"`
+}
+
+func (a *Audience) UnmarshalJSON(b []byte) error {
+	var errUnsupportedType = errors.New("Unsupported aud type, only string or []string are allowed")
+
+	var jsonObject interface{}
+	err := json.Unmarshal(b, &jsonObject)
+	if err != nil {
+		return err
+	}
+
+	switch o := jsonObject.(type) {
+	case string:
+		*a = Audience{o}
+		return nil
+	case []interface{}:
+		s := make(Audience, 0, len(o))
+		for _, v := range o {
+			value, ok := v.(string)
+			if !ok {
+				return errUnsupportedType
+			}
+			s = append(s, value)
+		}
+		*a = s
+		return nil
+	}
+
+	return errUnsupportedType
 }
 
 func (a *AuthenticatorOAuth2Introspection) tokenFromCache(config *AuthenticatorOAuth2IntrospectionConfiguration, token string, ss fosite.ScopeStrategy) *AuthenticatorOAuth2IntrospectionResult {
@@ -110,12 +139,16 @@ func (a *AuthenticatorOAuth2Introspection) tokenFromCache(config *AuthenticatorO
 		return nil
 	}
 
-	i, ok := item.(*AuthenticatorOAuth2IntrospectionResult)
+	i, ok := item.([]byte)
 	if !ok {
 		return nil
 	}
 
-	return i
+	var v AuthenticatorOAuth2IntrospectionResult
+	if err := json.Unmarshal(i, &v); err != nil {
+		return nil
+	}
+	return &v
 }
 
 func (a *AuthenticatorOAuth2Introspection) tokenToCache(config *AuthenticatorOAuth2IntrospectionConfiguration, i *AuthenticatorOAuth2IntrospectionResult, token string, ss fosite.ScopeStrategy) {
@@ -127,34 +160,13 @@ func (a *AuthenticatorOAuth2Introspection) tokenToCache(config *AuthenticatorOAu
 		return
 	}
 
-	if a.cacheTTL != nil {
-		a.tokenCache.SetWithTTL(token, i, 1, *a.cacheTTL)
+	if v, err := json.Marshal(i); err != nil {
+		return
+	} else if a.cacheTTL != nil {
+		a.tokenCache.SetWithTTL(token, v, 1, *a.cacheTTL)
 	} else {
-		a.tokenCache.Set(token, i, 1)
+		a.tokenCache.Set(token, v, 1)
 	}
-}
-
-func (a *AuthenticatorOAuth2Introspection) traceRequest(ctx context.Context, req *http.Request) func() {
-	tracer := opentracing.GlobalTracer()
-	if tracer == nil {
-		return func() {}
-	}
-
-	parentSpan := opentracing.SpanFromContext(ctx)
-	opts := make([]opentracing.StartSpanOption, 0, 1)
-	if parentSpan != nil {
-		opts = append(opts, opentracing.ChildOf(parentSpan.Context()))
-	}
-
-	urlStr := req.URL.String()
-	clientSpan := tracer.StartSpan(req.Method+" "+urlStr, opts...)
-
-	ext.SpanKindRPCClient.Set(clientSpan)
-	ext.HTTPUrl.Set(clientSpan, urlStr)
-	ext.HTTPMethod.Set(clientSpan, req.Method)
-
-	_ = tracer.Inject(clientSpan.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
-	return clientSpan.Finish
 }
 
 func (a *AuthenticatorOAuth2Introspection) Authenticate(r *http.Request, session *AuthenticationSession, config json.RawMessage, _ pipeline.Rule) error {
@@ -192,7 +204,7 @@ func (a *AuthenticatorOAuth2Introspection) Authenticate(r *http.Request, session
 		introspectReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 		// add tracing
-		closeSpan := a.traceRequest(r.Context(), introspectReq)
+		closeSpan := x.TraceRequest(r.Context(), introspectReq)
 
 		resp, err := client.Do(introspectReq.WithContext(r.Context()))
 

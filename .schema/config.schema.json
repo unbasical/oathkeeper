@@ -420,10 +420,38 @@
           "title": "Only Cookies",
           "description": "A list of possible cookies to look for on incoming requests, and will fallthrough to the next authenticator if none of the passed cookies are set on the request."
         },
+        "preserve_query": {
+          "title": "Preserve Query",
+          "type": "boolean",
+          "default": true,
+          "description": "When unset or set to true, any query parameters specified in `check_session_url` will be preserved instead of overwriting them with the query parameters from the original request"
+        },
         "preserve_path": {
           "title": "Preserve Path",
           "type": "boolean",
-          "description": "When set to true, any path specified in `check_session_url` will be preserved instead of overwriting the path with the path from the original request"
+          "description": "When set to true, any path specified in `check_session_url` will be preserved instead of overwriting the path with the path from the original request."
+        },
+        "preserve_host": {
+          "title": "Preserve Host",
+          "type": "boolean",
+          "description": "When set to true the HTTP Header X-Forwarded-Host will be set to the original HTTP host."
+        },
+        "force_method": {
+          "title": "Force HTTP Method",
+          "type": "string",
+          "description": "When set uses the given HTTP method instead of the request HTTP method.",
+          "examples": [
+            "GET",
+            "POST"
+          ]
+        },
+        "additional_headers": {
+          "title": "Set Additional HTTP Headers",
+          "type": "object",
+          "description": "Set additional HTTP Headers for the Session Check URL.",
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "extra_from": {
           "title": "Extra JSON Path",
@@ -499,10 +527,38 @@
             }
           ]
         },
+        "preserve_query": {
+          "title": "Preserve Query",
+          "type": "boolean",
+          "default": true,
+          "description": "When unset or set to true, any query parameters specified in `check_session_url` will be preserved instead of overwriting them with the query parameters from the original request"
+        },
         "preserve_path": {
           "title": "Preserve Path",
           "type": "boolean",
           "description": "When set to true, any path specified in `check_session_url` will be preserved instead of overwriting the path with the path from the original request"
+        },
+        "preserve_host": {
+          "title": "Preserve Host",
+          "type": "boolean",
+          "description": "When set to true the HTTP Header X-Forwarded-Host will be set to the original HTTP host."
+        },
+        "force_method": {
+          "title": "Force HTTP Method",
+          "type": "string",
+          "description": "When set uses the given HTTP method instead of the request HTTP method.",
+          "examples": [
+            "GET",
+            "POST"
+          ]
+        },
+        "additional_headers": {
+          "title": "Set Additional HTTP Headers",
+          "type": "object",
+          "description": "Set additional HTTP Headers for the Session Check URL.",
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "extra_from": {
           "title": "Extra JSON Path",
@@ -578,7 +634,7 @@
           "title": "Max await interval for the JWK fetch",
           "type": "string",
           "description": "The configuration which sets the max wait threshold when fetching new JWKs",
-          "default" : "1s",
+          "default": "1s",
           "examples": [
             "100ms",
             "1s"
@@ -588,7 +644,7 @@
           "title": "JWK cache TTL configuration",
           "type": "string",
           "description": "The time interval for which fetched JWKs are cached",
-          "default" : "30s",
+          "default": "30s",
           "examples": [
             "30m",
             "6h"
@@ -665,6 +721,30 @@
         },
         "retry": {
           "$ref": "#/definitions/retry"
+        },
+        "cache": {
+          "additionalProperties": false,
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "$ref": "#/definitions/handlerSwitch"
+            },
+            "ttl": {
+              "type": "string",
+              "pattern": "^[0-9]+(ns|us|ms|s|m|h)$",
+              "title": "Cache Time to Live",
+              "description": "Can override the default behaviour of using the token exp time, and specify a set time to live for the token in the cache. If the token exp time is lower than the set value the token exp time will be used instead.",
+              "examples": [
+                "5s"
+              ]
+            },
+            "max_tokens": {
+              "type": "integer",
+              "default": 1000,
+              "title": "Maximum Cached Tokens",
+              "description": "Max number of tokens to cache."
+            }
+          }
         }
       },
       "required": [
@@ -960,6 +1040,9 @@
           "minLength": 0,
           "uniqueItems": true,
           "default": []
+        },
+        "retry": {
+          "$ref": "#/definitions/retry"
         }
       },
       "required": [
@@ -999,6 +1082,9 @@
           "minLength": 0,
           "uniqueItems": true,
           "default": []
+        },
+        "retry": {
+          "$ref": "#/definitions/retry"
         }
       },
       "required": [
@@ -1265,7 +1351,7 @@
       "properties": {
         "repositories": {
           "title": "Repositories",
-          "description": "Locations (list of URLs) where access rules should be fetched from on boot. It is expected that the documents at those locations return a JSON or YAML Array containing ORY Oathkeeper Access Rules:\n\n- If the URL Scheme is `file://`, the access rules (an array of access rules is expected) will be fetched from the local file system.\n- If the URL Scheme is `inline://`, the access rules (an array of access rules is expected) are expected to be a base64 encoded (with padding!) JSON/YAML string (base64_encode(`[{\"id\":\"foo-rule\",\"authenticators\":[....]}]`)).\n- If the URL Scheme is `http://` or `https://`, the access rules (an array of access rules is expected) will be fetched from the provided HTTP(s) location.",
+          "description": "Locations (list of URLs) where access rules should be fetched from on boot. It is expected that the documents at those locations return a JSON or YAML Array containing ORY Oathkeeper Access Rules:\n\n- If the URL Scheme is `file://`, the access rules (an array of access rules is expected) will be fetched from the local file system.\n- If the URL Scheme is `inline://`, the access rules (an array of access rules is expected) are expected to be a base64 encoded (with padding!) JSON/YAML string (base64_encode(`[{\"id\":\"foo-rule\",\"authenticators\":[....]}]`)).\n- If the URL Scheme is `http://` or `https://`, the access rules (an array of access rules is expected) will be fetched from the provided HTTP(s) location.\n- If the URL Scheme is `s3://`, `gs://` or `azblob://`, the access rules (an array of access rules is expected) will be fetched by an object storage (AWS S3, Google Cloud Storage, Azure Blob Storage).\n\nS3 storage also supports S3-compatible endpoints served by Minio or Ceph. See aws.ConfigFromURLParams (https://godoc.org/gocloud.dev/aws#ConfigFromURLParams) for more details on supported URL options for S3.",
           "type": "array",
           "items": {
             "type": "string",
@@ -1275,6 +1361,11 @@
             [
               "file://path/to/rules.json",
               "inline://W3siaWQiOiJmb28tcnVsZSIsImF1dGhlbnRpY2F0b3JzIjpbXX1d",
+              "https://path-to-my-rules/rules.json",
+              "s3://my-bucket-name/rules.json",
+              "s3://my-bucket-name/rules.json?endpoint=minio.my-server.net",
+              "gs://gcp-bucket-name/rules.json",
+              "azblob://my-blob-container/rules.json",
               "https://path-to-my-rules/rules.json"
             ]
           ]
@@ -1931,6 +2022,168 @@
         }
       }
     },
+    "tracing": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "ory://tracing-config",
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Configure distributed tracing.",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Set this to the tracing backend you wish to use. Supports Jaeger, Zipkin, DataDog and elastic-apm. If omitted or empty, tracing will be disabled. Use environment variables to configure DataDog (see https://docs.datadoghq.com/tracing/setup/go/#configuration).",
+          "enum": [
+            "zipkin",
+            "jaeger",
+            "datadog",
+            "elastic-apm"
+          ],
+          "examples": [
+            "zipkin"
+          ]
+        },
+        "service_name": {
+          "type": "string",
+          "description": "Specifies the service name to use on the tracer.",
+          "examples": [
+            "Ory Oathkeeper"
+          ]
+        },
+        "providers": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "zipkin": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Configures the zipkin tracing backend.",
+              "properties": {
+                "server_url": {
+                  "type": "string",
+                  "description": "The address of Zipkin server where spans should be sent to.",
+                  "format": "uri"
+                }
+              },
+              "examples": [
+                {
+                  "server_url": "http://localhost:9411/api/v2/spans"
+                }
+              ]
+            },
+            "jaeger": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Configures the jaeger tracing backend.",
+              "properties": {
+                "local_agent_address": {
+                  "type": "string",
+                  "description": "The address of the jaeger-agent where spans should be sent to.",
+                  "oneOf": [
+                    {
+                      "pattern": "^\\[(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))]:([0-9]*)$"
+                    },
+                    {
+                      "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}:([0-9]*)$"
+                    },
+                    {
+                      "format": "uri"
+                    }
+                  ],
+                  "examples": [
+                    "127.0.0.1:6831"
+                  ]
+                },
+                "propagation": {
+                  "type": "string",
+                  "description": "The tracing header format",
+                  "examples": [
+                    "jaeger"
+                  ]
+                },
+                "max_tag_value_length": {
+                  "type": "integer",
+                  "description": "The value passed to the max tag value length that has been configured.",
+                  "minimum": 0
+                },
+                "sampling": {
+                  "type": "object",
+                  "propertyNames": {
+                    "enum": [
+                      "type",
+                      "value",
+                      "server_url"
+                    ]
+                  },
+                  "allOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "type": {
+                              "description": "The type of the sampler you want to use.",
+                              "const": "const"
+                            },
+                            "value": {
+                              "type": "integer",
+                              "description": "The value passed to the sampler type that has been configured.",
+                              "minimum": 0,
+                              "maximum": 1
+                            }
+                          }
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "description": "The type of the sampler you want to use.",
+                              "const": "rateLimiting"
+                            },
+                            "value": {
+                              "type": "integer",
+                              "description": "The value passed to the sampler type that has been configured.",
+                              "minimum": 0
+                            }
+                          }
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "description": "The type of the sampler you want to use.",
+                              "const": "probabilistic"
+                            },
+                            "value": {
+                              "type": "number",
+                              "description": "The value passed to the sampler type that has been configured.",
+                              "minimum": 0,
+                              "maximum": 1
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "server_url": {
+                          "type": "string",
+                          "description": "The address of jaeger-agent's HTTP sampling server",
+                          "format": "uri"
+                        }
+                      }
+                    }
+                  ],
+                  "examples": [
+                    {
+                      "type": "const",
+                      "value": 1,
+                      "server_url": "http://localhost:5778/sampling"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "log": {
       "title": "Log",
       "description": "Configure logging using the following options. Logging will always be sent to stdout and stderr.",
@@ -1958,7 +2211,10 @@
         "format": {
           "description": "The log format can either be text or JSON.",
           "type": "string",
-          "enum": ["json", "text"]
+          "enum": [
+            "json",
+            "text"
+          ]
         }
       },
       "additionalProperties": false

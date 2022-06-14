@@ -53,7 +53,7 @@ type RegistryMemory struct {
 	apiJudgeHandler     *api.DecisionHandler
 	healthxHandler      *healthx.Handler
 
-	proxyRequestHandler *proxy.RequestHandler
+	proxyRequestHandler proxy.RequestHandler
 	proxyProxy          *proxy.Proxy
 	ruleFetcher         rule.Fetcher
 
@@ -89,7 +89,7 @@ func (r *RegistryMemory) WithRuleFetcher(fetcher rule.Fetcher) Registry {
 	return r
 }
 
-func (r *RegistryMemory) ProxyRequestHandler() *proxy.RequestHandler {
+func (r *RegistryMemory) ProxyRequestHandler() proxy.RequestHandler {
 	if r.proxyRequestHandler == nil {
 		r.proxyRequestHandler = proxy.NewRequestHandler(r, r.c)
 	}
@@ -369,7 +369,7 @@ func (r *RegistryMemory) prepareAuthn() {
 			authn.NewAuthenticatorBearerToken(r.c),
 			authn.NewAuthenticatorJWT(r.c, r),
 			authn.NewAuthenticatorNoOp(r.c),
-			authn.NewAuthenticatorOAuth2ClientCredentials(r.c),
+			authn.NewAuthenticatorOAuth2ClientCredentials(r.c, r.Logger()),
 			authn.NewAuthenticatorOAuth2Introspection(r.c, r.Logger()),
 			authn.NewAuthenticatorUnauthorized(r.c),
 		}
@@ -425,6 +425,7 @@ func (r *RegistryMemory) Tracer() *tracing.Tracer {
 		r.trc = &tracing.Tracer{
 			ServiceName:  r.c.TracingServiceName(),
 			JaegerConfig: r.c.TracingJaegerConfig(),
+			ZipkinConfig: r.c.TracingZipkinConfig(),
 			Provider:     r.c.TracingProvider(),
 			Logger:       r.Logger(),
 		}

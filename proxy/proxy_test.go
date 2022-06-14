@@ -22,6 +22,7 @@ package proxy_test
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -427,6 +428,53 @@ func TestConfigureBackendURL(t *testing.T) {
 			assert.EqualValues(t, tc.eHost, tc.r.Host)
 		})
 	}
+}
+
+func TestEnrichRequestedURL(t *testing.T) {
+	for k, tc := range []struct {
+		in     *http.Request
+		expect url.URL
+	}{
+		{
+			in:     &http.Request{Host: "test", TLS: &tls.ConnectionState{}, URL: new(url.URL)},
+			expect: url.URL{Scheme: "https", Host: "test"},
+		},
+		{
+			in:     &http.Request{Host: "test", URL: new(url.URL)},
+			expect: url.URL{Scheme: "http", Host: "test"},
+		},
+		{
+			in:     &http.Request{Host: "test", Header: http.Header{"X-Forwarded-Proto": {"https"}}, URL: new(url.URL)},
+			expect: url.URL{Scheme: "https", Host: "test"},
+		},
+	} {
+		t.Run(fmt.Sprintf("case=%d", k), func(t *testing.T) {
+			proxy.EnrichRequestedURL(tc.in)
+			assert.EqualValues(t, tc.expect, *tc.in.URL)
+		})
+	}
+}
+func TestCopyHeaders(t *testing.T) {
+	v := "value"
+	for _, headerKey := range []string{
+		"X-Forwarded-For",
+		"X-FORWARDED-FOR",
+		"x-forwarded-for",
+		"X-CoMpAnY",
+	} {
+		r := &http.Request{Host: "test", URL: new(url.URL)}
+		canonicalHeaders := http.Header{}
+		canonicalHeaders.Add(headerKey, v)
+		proxy.CopyHeaders(canonicalHeaders, r)
+		assert.EqualValues(t, canonicalHeaders, r.Header)
+
+		notCanonicalHeaders := http.Header{}
+		notCanonicalHeaders[headerKey] = []string{v}
+		nr := &http.Request{Host: "test", URL: new(url.URL)}
+		proxy.CopyHeaders(notCanonicalHeaders, nr)
+		assert.EqualValues(t, canonicalHeaders, nr.Header)
+	}
+
 }
 
 //

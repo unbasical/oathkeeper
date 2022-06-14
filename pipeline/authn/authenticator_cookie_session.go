@@ -28,11 +28,15 @@ type AuthenticatorCookieSessionFilter struct {
 }
 
 type AuthenticatorCookieSessionConfiguration struct {
-	Only            []string `json:"only"`
-	CheckSessionURL string   `json:"check_session_url"`
-	PreservePath    bool     `json:"preserve_path"`
-	ExtraFrom       string   `json:"extra_from"`
-	SubjectFrom     string   `json:"subject_from"`
+	Only            []string          `json:"only"`
+	CheckSessionURL string            `json:"check_session_url"`
+	PreserveQuery   bool              `json:"preserve_query"`
+	PreservePath    bool              `json:"preserve_path"`
+	ExtraFrom       string            `json:"extra_from"`
+	SubjectFrom     string            `json:"subject_from"`
+	PreserveHost    bool              `json:"preserve_host"`
+	SetHeaders      map[string]string `json:"additional_headers"`
+	ForceMethod     string            `json:"force_method"`
 }
 
 type AuthenticatorCookieSession struct {
@@ -85,7 +89,7 @@ func (a *AuthenticatorCookieSession) Authenticate(r *http.Request, session *Auth
 		return errors.WithStack(ErrAuthenticatorNotResponsible)
 	}
 
-	body, err := forwardRequestToSessionStore(r, cf.CheckSessionURL, cf.PreservePath)
+	body, err := forwardRequestToSessionStore(r, cf.CheckSessionURL, cf.PreserveQuery, cf.PreservePath, cf.PreserveHost, cf.SetHeaders, cf.ForceMethod)
 	if err != nil {
 		return err
 	}
@@ -125,7 +129,7 @@ func cookieSessionResponsible(r *http.Request, only []string) bool {
 	return false
 }
 
-func forwardRequestToSessionStore(r *http.Request, checkSessionURL string, preservePath bool) (json.RawMessage, error) {
+func forwardRequestToSessionStore(r *http.Request, checkSessionURL string, preserveQuery bool, preservePath bool, preserveHost bool, setHeaders map[string]string, m string) (json.RawMessage, error) {
 	reqUrl, err := url.Parse(checkSessionURL)
 	if err != nil {
 		return nil, errors.WithStack(herodot.ErrInternalServerError.WithReasonf("Unable to parse session check URL: %s", err))
@@ -135,11 +139,33 @@ func forwardRequestToSessionStore(r *http.Request, checkSessionURL string, prese
 		reqUrl.Path = r.URL.Path
 	}
 
-	req := http.Request{
-		Method: r.Method,
-		URL:    reqUrl,
-		Header: r.Header,
+	if !preserveQuery {
+		reqUrl.RawQuery = r.URL.RawQuery
 	}
+
+	if m == "" {
+		m = r.Method
+	}
+
+	req := http.Request{
+		Method: m,
+		URL:    reqUrl,
+		Header: http.Header{},
+	}
+
+	// We need to make a COPY of the header, not modify r.Header!
+	for k, v := range r.Header {
+		req.Header[k] = v
+	}
+
+	for k, v := range setHeaders {
+		req.Header.Set(k, v)
+	}
+
+	if preserveHost {
+		req.Header.Set("X-Forwarded-Host", r.Host)
+	}
+
 	res, err := http.DefaultClient.Do(req.WithContext(r.Context()))
 	if err != nil {
 		return nil, helper.ErrForbidden.WithReason(err.Error()).WithTrace(err)

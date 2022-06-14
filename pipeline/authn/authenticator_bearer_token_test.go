@@ -7,8 +7,10 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"reflect"
 	"testing"
 
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
 	"net/http/httptest"
@@ -84,31 +86,114 @@ func TestAuthenticatorBearerToken(t *testing.T) {
 				},
 			},
 			{
-				d: "should pass through method, path, and headers to auth server",
-				r: &http.Request{Header: http.Header{"Authorization": {"bearer zyx"}}, URL: &url.URL{Path: "/users/123?query=string"}, Method: "PUT"},
+				d: "should pass through method, path, and headers to auth server; should NOT pass through query parameters by default for backwards compatibility",
+				r: &http.Request{Header: http.Header{"Authorization": {"bearer zyx"}}, URL: &url.URL{Path: "/users/123", RawQuery: "query=string"}, Method: "PUT"},
 				router: func(w http.ResponseWriter, r *http.Request) {
 					assert.Equal(t, r.Method, "PUT")
-					assert.Equal(t, r.URL.Path, "/users/123?query=string")
+					assert.Equal(t, r.URL.Path, "/users/123")
+					assert.Equal(t, r.URL.RawQuery, "")
 					assert.Equal(t, r.Header.Get("Authorization"), "bearer zyx")
 					w.WriteHeader(200)
 					w.Write([]byte(`{"sub": "123"}`))
 				},
+				config:    []byte(`{"preserve_query": true}`),
 				expectErr: false,
 				expectSess: &AuthenticationSession{
 					Subject: "123",
 				},
 			},
 			{
-				d: "should pass through method and headers ONLY to auth server when PreservePath is true",
-				r: &http.Request{Header: http.Header{"Authorization": {"bearer zyx"}}, URL: &url.URL{Path: "/users/123?query=string"}, Method: "PUT"},
+				d: "should pass through method, headers, and query ONLY to auth server when PreservePath is true and PreserveQuery is false",
+				r: &http.Request{Header: http.Header{"Authorization": {"bearer zyx"}}, URL: &url.URL{Path: "/users/123", RawQuery: "query=string"}, Method: "PUT"},
 				router: func(w http.ResponseWriter, r *http.Request) {
 					assert.Equal(t, r.Method, "PUT")
 					assert.Equal(t, r.URL.Path, "/")
+					assert.Equal(t, r.URL.RawQuery, "query=string")
 					assert.Equal(t, r.Header.Get("Authorization"), "bearer zyx")
 					w.WriteHeader(200)
 					w.Write([]byte(`{"sub": "123"}`))
 				},
-				config:    []byte(`{"preserve_path": true}`),
+				config:    []byte(`{"preserve_path": true, "preserve_query": false}`),
+				expectErr: false,
+				expectSess: &AuthenticationSession{
+					Subject: "123",
+				},
+			},
+			{
+				d: "should pass use the configured method",
+				r: &http.Request{Header: http.Header{"Authorization": {"bearer zyx"}}, URL: &url.URL{Path: "/users/123", RawQuery: "query=string"}, Method: "PUT"},
+				router: func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, r.Method, "GET")
+					assert.Equal(t, r.Header.Get("Authorization"), "bearer zyx")
+					w.WriteHeader(200)
+					w.Write([]byte(`{"sub": "123"}`))
+				},
+				config:    []byte(`{"preserve_path": true, "force_method": "GET"}`),
+				expectErr: false,
+				expectSess: &AuthenticationSession{
+					Subject: "123",
+				},
+			},
+			{
+				d: "should pass through method, headers, and path ONLY to auth server when PreservePath is false and PreserveQuery is true",
+				r: &http.Request{Header: http.Header{"Authorization": {"bearer zyx"}}, URL: &url.URL{Path: "/users/123", RawQuery: "query=string"}, Method: "PUT"},
+				router: func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, r.Method, "PUT")
+					assert.Equal(t, r.URL.Path, "/users/123")
+					assert.Equal(t, r.URL.RawQuery, "")
+					assert.Equal(t, r.Header.Get("Authorization"), "bearer zyx")
+					w.WriteHeader(200)
+					w.Write([]byte(`{"sub": "123"}`))
+				},
+				config:    []byte(`{"preserve_path": false, "preserve_query": true}`),
+				expectErr: false,
+				expectSess: &AuthenticationSession{
+					Subject: "123",
+				},
+			},
+			{
+				d: "should preserve path, query in check_session_url when preserve_path, preserve_query are true",
+				r: &http.Request{Host: "some-host", Header: http.Header{"Authorization": {"bearer zyx"}}, URL: &url.URL{Path: "/client/request/path", RawQuery: "q=client-request-query"}, Method: "PUT"},
+				router: func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, r.URL.Path, "/configured/path")
+					assert.Equal(t, r.URL.RawQuery, "q=configured-query")
+					w.WriteHeader(200)
+					w.Write([]byte(`{"sub": "123"}`))
+				},
+				config:    []byte(`{"preserve_path": true, "preserve_query": true, "check_session_url": "http://origin-replaced-in-test/configured/path?q=configured-query"}`),
+				expectErr: false,
+				expectSess: &AuthenticationSession{
+					Subject: "123",
+				},
+			},
+			{
+				d: "should pass and set host when preserve_host is true",
+				r: &http.Request{Host: "some-host", Header: http.Header{"Authorization": {"bearer zyx"}}, URL: &url.URL{Path: "/users/123", RawQuery: "query=string"}, Method: "PUT"},
+				router: func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, r.Method, "PUT")
+					assert.Equal(t, "some-host", r.Header.Get("X-Forwarded-Host"))
+					assert.Equal(t, r.Header.Get("Authorization"), "bearer zyx")
+					w.WriteHeader(200)
+					w.Write([]byte(`{"sub": "123"}`))
+				},
+				config:    []byte(`{"preserve_host": true}`),
+				expectErr: false,
+				expectSess: &AuthenticationSession{
+					Subject: "123",
+				},
+			},
+			{
+				d: "should pass and set additional hosts but not overwrite x-forwarded-host",
+				r: &http.Request{Host: "some-host", Header: http.Header{"Authorization": {"bearer zyx"}}, URL: &url.URL{Path: "/users/123", RawQuery: "query=string"}, Method: "PUT"},
+				router: func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, r.Method, "PUT")
+					assert.Equal(t, "some-host", r.Header.Get("X-Forwarded-Host"))
+					assert.Equal(t, "bar", r.Header.Get("X-Foo"))
+					assert.Equal(t, r.Header.Get("Authorization"), "bearer zyx")
+					w.WriteHeader(200)
+					w.Write([]byte(`{"sub": "123"}`))
+				},
+				config:    []byte(`{"preserve_host": true, "additional_headers": {"X-Foo": "bar","X-Forwarded-For": "not-some-host"}}`),
 				expectErr: false,
 				expectSess: &AuthenticationSession{
 					Subject: "123",
@@ -121,7 +206,7 @@ func TestAuthenticatorBearerToken(t *testing.T) {
 						"Authorization":  {"bearer zyx"},
 						"Content-Length": {"4"},
 					},
-					URL:    &url.URL{Path: "/users/123?query=string"},
+					URL:    &url.URL{Path: "/users/123", RawQuery: "query=string"},
 					Method: "PUT",
 					Body:   ioutil.NopCloser(bytes.NewBufferString("body")),
 				},
@@ -171,7 +256,6 @@ func TestAuthenticatorBearerToken(t *testing.T) {
 			},
 		} {
 			t.Run(fmt.Sprintf("case=%d/description=%s", k, tc.d), func(t *testing.T) {
-
 				var ts *httptest.Server
 				if tc.router != nil {
 					ts = httptest.NewServer(http.HandlerFunc(tc.router))
@@ -184,9 +268,21 @@ func TestAuthenticatorBearerToken(t *testing.T) {
 				}
 				defer ts.Close()
 
-				tc.config, _ = sjson.SetBytes(tc.config, "check_session_url", ts.URL)
+				testCheckSessionUrl, err := url.Parse(ts.URL)
+				require.NoError(t, err)
+				configCheckSessionUrl, err := url.Parse(gjson.Get(string(tc.config), "check_session_url").String())
+				require.NoError(t, err)
+				testCheckSessionUrl.Path = configCheckSessionUrl.Path
+				testCheckSessionUrl.RawQuery = configCheckSessionUrl.RawQuery
+
+				tc.config, _ = sjson.SetBytes(tc.config, "check_session_url", testCheckSessionUrl.String())
 				sess := new(AuthenticationSession)
-				err := pipelineAuthenticator.Authenticate(tc.r, sess, tc.config, nil)
+				originalHeaders := http.Header{}
+				for k, v := range tc.r.Header {
+					originalHeaders[k] = v
+				}
+
+				err = pipelineAuthenticator.Authenticate(tc.r, sess, tc.config, nil)
 				if tc.expectErr {
 					require.Error(t, err)
 					if tc.expectExactErr != nil {
@@ -195,6 +291,8 @@ func TestAuthenticatorBearerToken(t *testing.T) {
 				} else {
 					require.NoError(t, err)
 				}
+
+				require.True(t, reflect.DeepEqual(tc.r.Header, originalHeaders))
 
 				if tc.expectSess != nil {
 					assert.Equal(t, tc.expectSess, sess)

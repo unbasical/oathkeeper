@@ -39,7 +39,7 @@ type proxyRegistry interface {
 	x.RegistryLogger
 	x.RegistryWriter
 
-	ProxyRequestHandler() *RequestHandler
+	ProxyRequestHandler() RequestHandler
 	RuleMatcher() rule.Matcher
 }
 
@@ -113,6 +113,10 @@ func (d *Proxy) RoundTrip(r *http.Request) (*http.Response, error) {
 		WithFields(fields).
 		Warn("Unable to type assert context")
 
+	// add tracing
+	closeSpan := x.TraceRequest(r.Context(), r)
+	defer closeSpan()
+
 	d.r.ProxyRequestHandler().HandleError(rw, r, rl, err)
 
 	return &http.Response{
@@ -138,9 +142,7 @@ func (d *Proxy) Director(r *http.Request) {
 	}
 	*r = *r.WithContext(context.WithValue(r.Context(), ContextKeySession, s))
 
-	for h := range s.Header {
-		r.Header.Set(h, s.Header.Get(h))
-	}
+	CopyHeaders(s.Header, r)
 
 	if err := ConfigureBackendURL(r, rl); err != nil {
 		*r = *r.WithContext(context.WithValue(r.Context(), director, err))
@@ -151,12 +153,27 @@ func (d *Proxy) Director(r *http.Request) {
 	*r = *r.WithContext(context.WithValue(r.Context(), director, en))
 }
 
+func CopyHeaders(headers http.Header, r *http.Request) {
+	if r.Header == nil {
+		r.Header = make(map[string][]string)
+	}
+	for k, v := range headers {
+		var val string
+		if len(v) == 0 {
+			val = ""
+		} else {
+			val = v[0]
+		}
+		r.Header.Set(k, val)
+	}
+}
+
 // EnrichRequestedURL sets Scheme and Host values in a URL passed down by a http server. Per default, the URL
 // does not contain host nor scheme values.
 func EnrichRequestedURL(r *http.Request) {
 	r.URL.Scheme = "http"
 	r.URL.Host = r.Host
-	if r.TLS != nil {
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
 		r.URL.Scheme = "https"
 	}
 }
